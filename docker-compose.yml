@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  jamf-bootstrap-api:
+    image: jamf-bootstrap-api:latest
+    container_name: jamf-bootstrap-api
+    ports:
+      - "5000:5000"
+    environment:
+      - VAULT_ADDR=${VAULT_ADDR}
+      - VAULT_ROLE_ID=${VAULT_ROLE_ID}
+      - FLASK_ENV=${FLASK_ENV:-prod}
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

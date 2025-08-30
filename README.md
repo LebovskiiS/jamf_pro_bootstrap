@@ -1,102 +1,21 @@
 # Jamf Pro Bootstrap API
 
-API для обработки зашифрованных запросов от CRM к Jamf Pro с интеграцией HashiCorp Vault и GCP Cloud SQL.
+API для обработки зашифрованных запросов от CRM к Jamf Pro с интеграцией HashiCorp Vault и Google Cloud SQL.
 
-## 🔐 Как сервер автоматически логинится в Vault
+## Переменные для добавления в Vault
 
-### Простой Linux сервер
-
-**На сервере нужно только:**
-
-1. **Установить переменные окружения:**
-```bash
-export VAULT_ADDR="https://vault.your-domain.com"
-export VAULT_ROLE_ID="your-role-id"
-export FLASK_ENV="prod"
-```
-
-2. **Запустить через скрипт:**
-```bash
-./scripts/vault-auth.sh
-```
-
-**Скрипт автоматически:**
-- Получает Secret ID из Vault
-- Проверяет подключение
-- Запускает приложение
-
-### Systemd Service (опционально)
-
-**На сервере создаете service файл:**
-
-```bash
-# Копируете service файл
-sudo cp systemd-service.service /etc/systemd/system/
-
-# Включаете и запускаете
-sudo systemctl enable jamf-bootstrap-api
-sudo systemctl start jamf-bootstrap-api
-```
-
-## Безопасная аутентификация в Vault
-
-### Рекомендуемые методы аутентификации:
-
-#### 1. AppRole (рекомендуется для production)
-```bash
-export VAULT_ADDR="https://your-vault-server.com"
-export VAULT_ROLE_ID="your-role-id"
-export VAULT_SECRET_ID="your-secret-id"
-export FLASK_ENV="prod"
-```
-
-#### 2. Token (только для разработки)
-```bash
-export VAULT_ADDR="https://your-vault-server.com"
-export VAULT_TOKEN="your-vault-token"
-export FLASK_ENV="dev"
-```
-
-## Структура секретов в Vault
-
-### Окружение DEV (`secret/jamf-bootstrap-dev`)
+### 1. Секрет `secret/jamf-bootstrap-prod` (НЕ ротируемые)
 
 ```json
 {
-  "secret_key": "dev-secret-key-32-chars-long",
-  "flask_debug": "True",
-  "database_url": "mysql+pymysql://username:password@host:3306/jamf_bootstrap_dev",
-  "encryption_key": "dev-encryption-key-32-chars-long",
-  "api_secret": "dev-api-secret-key"
-}
-```
-
-### Окружение PROD (`secret/jamf-bootstrap-prod`)
-
-```json
-{
-  "secret_key": "prod-secret-key-32-chars-long",
+  "secret_key": "prod-secret-key-32-chars-long-here",
   "flask_debug": "False",
-  "database_url": "mysql+pymysql://username:password@host:3306/jamf_bootstrap_prod",
-  "encryption_key": "prod-encryption-key-32-chars-long",
-  "api_secret": "prod-api-secret-key"
+  "encryption_key": "prod-encryption-key-32-chars-long-here",
+  "api_secret": "prod-api-secret-key-here"
 }
 ```
 
-### Jamf Pro DEV (`secret/jamf-pro-dev`)
-
-```json
-{
-  "url": "https://dev-jamf-pro-instance.com",
-  "username": "dev_username",
-  "password": "dev_password",
-  "client_id": "dev_client_id",
-  "client_secret": "dev_client_secret",
-  "api_key": "dev_jamf_api_key"
-}
-```
-
-### Jamf Pro PROD (`secret/jamf-pro-prod`)
+### 2. Секрет `secret/jamf-pro-prod` (РОТИРУЕМЫЕ)
 
 ```json
 {
@@ -109,137 +28,59 @@ export FLASK_ENV="dev"
 }
 ```
 
-## Структура запросов
-
-### Пример тела запроса от CRM:
+### 3. Секрет `secret/database-prod` (РОТИРУЕМЫЕ)
 
 ```json
 {
-  "employee_id": "E12345",
-  "email": "user@example.com",
-  "full_name": "User Name",
-  "device": {
-    "serial": "C02XXXXX",
-    "platform": "macOS",
-    "os_version": "15.0"
-  },
-  "idempotency_key": "b2df428b-..."
+  "host": "your-cloud-sql-instance-ip",
+  "port": "3306",
+  "name": "jamf_bootstrap_prod",
+  "user": "jamf_user",
+  "password": "your-database-password",
+  "ssl_ca": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
 }
 ```
 
-### Зашифрованный запрос к API:
+### 4. Секрет `secret/jamf-bootstrap-dev` (НЕ ротируемые)
 
 ```json
 {
-  "crm_id": "crm-123",
-  "request_type": "create",
-  "payload": "encrypted-employee-data",
-  "encrypted_key": "encrypted-key-from-vault"
+  "secret_key": "dev-secret-key-32-chars-long-here",
+  "flask_debug": "True",
+  "encryption_key": "dev-encryption-key-32-chars-long-here",
+  "api_secret": "dev-api-secret-key-here"
 }
 ```
 
-## API Endpoints
+### 5. Секрет `secret/jamf-pro-dev` (РОТИРУЕМЫЕ)
 
-### 1. Проверка здоровья API
-```
-GET /api/health
-```
-
-### 2. Создание запроса от CRM
-```
-POST /api/request
-Headers: X-API-Key: your-api-secret
-Body:
+```json
 {
-  "crm_id": "crm-123",
-  "request_type": "create",
-  "payload": "encrypted-payload-data",
-  "encrypted_key": "encrypted-key-from-vault"
+  "url": "https://dev-jamf-pro-instance.com",
+  "username": "dev_username",
+  "password": "dev_password",
+  "client_id": "dev_client_id",
+  "client_secret": "dev_client_secret",
+  "api_key": "dev_jamf_api_key"
 }
 ```
 
-### 3. Получение статуса запроса
+### 6. Секрет `secret/database-dev` (РОТИРУЕМЫЕ)
+
+```json
+{
+  "host": "your-dev-cloud-sql-instance-ip",
+  "port": "3306",
+  "name": "jamf_bootstrap_dev",
+  "user": "jamf_user",
+  "password": "your-dev-database-password",
+  "ssl_ca": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
+}
 ```
-GET /api/request/{request_id}
-Headers: X-API-Key: your-api-secret
-```
-
-### 4. Получение всех запросов CRM
-```
-GET /api/requests/crm/{crm_id}
-Headers: X-API-Key: your-api-secret
-```
-
-### 5. Обработка ожидающих запросов
-```
-POST /api/process
-Headers: X-API-Key: your-api-secret
-```
-
-## Установка и запуск
-
-### Для разработки:
-```bash
-# Создание виртуального окружения
-python3 -m venv venv
-source venv/bin/activate
-
-# Установка зависимостей
-pip install -r requirements.txt
-
-# Настройка переменных окружения
-export VAULT_ADDR="https://your-vault-server.com"
-export VAULT_TOKEN="your-vault-token"
-export FLASK_ENV="dev"
-
-# Запуск приложения
-python app.py
-```
-
-### Для production (Linux сервер):
-```bash
-# Установка зависимостей
-sudo apt-get update
-sudo apt-get install -y curl jq
-
-# Настройка переменных окружения
-export VAULT_ADDR="https://vault.your-domain.com"
-export VAULT_ROLE_ID="your-role-id"
-export FLASK_ENV="prod"
-
-# Запуск через скрипт (автоматически получает Secret ID)
-./scripts/vault-auth.sh
-```
-
-## Структура базы данных
-
-### Таблица `jamf_requests`
-- `id` - Primary Key
-- `request_id` - Уникальный ID запроса (UUID)
-- `crm_id` - ID CRM системы
-- `jamf_pro_id` - ID в Jamf Pro (после обработки)
-- `status` - Статус: pending, processing, completed, failed
-- `request_type` - Тип запроса: create, update, delete
-- `payload` - Зашифрованные данные запроса
-- `encrypted_key` - Зашифрованный ключ для расшифровки
-- `created_at` - Время создания
-- `updated_at` - Время обновления
-- `error_message` - Сообщение об ошибке
-- `processed_at` - Время обработки
-
-## Безопасность
-
-- Все секреты хранятся в HashiCorp Vault
-- Поддержка безопасных методов аутентификации (AppRole)
-- API защищен ключами аутентификации
-- Данные передаются в зашифрованном виде
-- Поддержка двух окружений (dev/prod)
-- Автоматическое создание таблиц в GCP Cloud SQL
-- Идемпотентность запросов через idempotency_key
 
 ## Настройка Vault
 
-### Создание AppRole для production:
+### Создание AppRole:
 
 ```bash
 # Включение AppRole auth method
@@ -253,6 +94,9 @@ path "secret/jamf-bootstrap-*" {
 path "secret/jamf-pro-*" {
   capabilities = ["read"]
 }
+path "secret/database-*" {
+  capabilities = ["read"]
+}
 EOF
 
 # Создание AppRole
@@ -261,7 +105,117 @@ vault write auth/approle/role/jamf-bootstrap \
   token_ttl=1h \
   token_max_ttl=4h
 
-# Получение Role ID и Secret ID
+# Получение Role ID (запишите его!)
 vault read auth/approle/role/jamf-bootstrap/role-id
-vault write -f auth/approle/role/jamf-bootstrap/secret-id
+```
+
+## Настройка Google Cloud SQL
+
+### Создание инстанса Cloud SQL:
+
+```bash
+# Создание инстанса MySQL
+gcloud sql instances create jamf-bootstrap-db \
+  --database-version=MYSQL_8_0 \
+  --tier=db-f1-micro \
+  --region=us-central1 \
+  --root-password=your-root-password
+
+# Создание базы данных
+gcloud sql databases create jamf_bootstrap_prod \
+  --instance=jamf-bootstrap-db
+
+# Создание пользователя
+gcloud sql users create jamf_user \
+  --instance=jamf-bootstrap-db \
+  --password=your-password
+
+# Получение IP адреса
+gcloud sql instances describe jamf-bootstrap-db \
+  --format="value(connectionName)"
+```
+
+## Развертывание на GCP
+
+### 1. Настройка GitHub Secrets
+
+В настройках репозитория GitHub добавьте:
+- `DOCKERHUB_USERNAME` - ваш логин Docker Hub
+- `DOCKERHUB_TOKEN` - ваш токен Docker Hub
+
+### 2. Автоматическая сборка
+
+При пуше в main/develop или создании тега автоматически:
+- Собирается Docker образ
+- Загружается в Docker Hub
+- Тегируется по версии
+
+### 3. Настройка GCP сервера
+
+```bash
+# Подключение к GCP серверу
+gcloud compute ssh your-instance-name
+
+# Создание директории
+mkdir -p /opt/jamf-bootstrap
+cd /opt/jamf-bootstrap
+
+# Создание .env файла
+nano .env
+```
+
+### 4. Содержимое .env файла
+
+```bash
+VAULT_ADDR=https://vault.your-domain.com
+VAULT_ROLE_ID=your-role-id-from-vault
+FLASK_ENV=prod
+```
+
+### 5. Запуск приложения
+
+```bash
+# Скачивание образа
+docker pull your-username/jamf-bootstrap-api:latest
+
+# Запуск через docker-compose
+docker-compose up -d
+
+# Проверка логов
+docker logs jamf-bootstrap-api
+```
+
+## API Endpoints
+
+- `GET /api/health` - Проверка здоровья API
+- `POST /api/request` - Создание запроса от CRM
+- `GET /api/request/{id}` - Получение статуса запроса
+- `GET /api/requests/crm/{crm_id}` - Запросы CRM
+- `POST /api/process` - Обработка ожидающих запросов
+
+## Структура запросов
+
+### Запрос от CRM:
+```json
+{
+  "crm_id": "crm-123",
+  "request_type": "create",
+  "payload": "encrypted-employee-data",
+  "encrypted_key": "encrypted-key-from-vault"
+}
+```
+
+### Данные сотрудника:
+```json
+{
+  "employee_id": "E12345",
+  "email": "user@example.com",
+  "full_name": "User Name",
+  "device": {
+    "serial": "C02XXXXX",
+    "platform": "macOS",
+    "os_version": "15.0"
+  },
+  "idempotency_key": "b2df428b-..."
+}
 ```

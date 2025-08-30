@@ -191,6 +191,29 @@ class VaultClient:
                 'API_SECRET': app_secret.get('api_secret', '')
             })
         
+        # Получаем настройки базы данных
+        db_secret = self.get_secret(f'secret/database-{environment}')
+        if db_secret:
+            config.update({
+                'DATABASE_HOST': db_secret.get('host', ''),
+                'DATABASE_PORT': db_secret.get('port', '3306'),
+                'DATABASE_NAME': db_secret.get('name', ''),
+                'DATABASE_USER': db_secret.get('user', ''),
+                'DATABASE_PASSWORD': db_secret.get('password', ''),
+                'DATABASE_SSL_CA': db_secret.get('ssl_ca', ''),
+                'DATABASE_SSL_CERT': db_secret.get('ssl_cert', ''),
+                'DATABASE_SSL_KEY': db_secret.get('ssl_key', '')
+            })
+            
+            # Формируем полный URL подключения к базе данных
+            if all([db_secret.get('host'), db_secret.get('user'), db_secret.get('password'), db_secret.get('name')]):
+                ssl_params = ""
+                if db_secret.get('ssl_ca'):
+                    ssl_params = "?ssl_ca=" + db_secret.get('ssl_ca')
+                
+                database_url = f"mysql+pymysql://{db_secret.get('user')}:{db_secret.get('password')}@{db_secret.get('host')}:{db_secret.get('port', '3306')}/{db_secret.get('name')}{ssl_params}"
+                config['DATABASE_URL'] = database_url
+        
         return config
     
     def get_encryption_key(self, environment: str = 'dev') -> Optional[str]:

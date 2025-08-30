@@ -1,0 +1,26 @@
+[Unit]
+Description=Jamf Pro Bootstrap API
+After=network.target
+
+[Service]
+Type=simple
+User=jamf-api
+Group=jamf-api
+WorkingDirectory=/opt/jamf-bootstrap
+Environment=VAULT_ADDR=https://vault.your-domain.com
+Environment=FLASK_ENV=prod
+Environment=VAULT_ROLE_ID=your-role-id
+Environment=VAULT_SECRET_ID=your-secret-id
+ExecStart=/opt/jamf-bootstrap/venv/bin/python app.py
+Restart=always
+RestartSec=10
+
+# Безопасность
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/jamf-bootstrap/logs
+
+[Install]
+WantedBy=multi-user.target

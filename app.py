@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Jamf Pro Bootstrap API
-API для обработки зашифрованных запросов от CRM к Jamf Pro
+Handles encrypted requests from CRM to Jamf Pro with Vault integration
 """
 
 import os
@@ -16,15 +16,15 @@ from app.database import DatabaseManager
 from app.encryption import EncryptionManager
 from app.vault_client import VaultClient
 
-# Настройка логирования
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def create_app():
-    """Создание и настройка Flask приложения"""
+    """Initialize and configure Flask application"""
     app = Flask(__name__)
     
-    # Инициализация метрик Prometheus
+    # Prometheus metrics setup
     request_counter = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint', 'status'])
     request_duration = Histogram('http_request_duration_seconds', 'HTTP request duration')
     active_requests = Gauge('http_requests_active', 'Active HTTP requests')
@@ -32,7 +32,7 @@ def create_app():
     memory_usage = Gauge('container_memory_usage_percent', 'Container memory usage percentage')
     disk_usage = Gauge('container_disk_usage_percent', 'Container disk usage percentage')
     
-    # Конфигурация из Vault или переменных окружения
+    # Load config from Vault or environment variables
     app.config['SECRET_KEY'] = config.get('SECRET_KEY')
     app.config['JAMF_PRO_URL'] = config.get('JAMF_PRO_URL')
     app.config['JAMF_PRO_USERNAME'] = config.get('JAMF_PRO_USERNAME')
@@ -44,19 +44,19 @@ def create_app():
     app.config['ENCRYPTION_KEY'] = config.get('ENCRYPTION_KEY')
     app.config['API_SECRET'] = config.get('API_SECRET')
     
-    # Инициализация компонентов
+    # Initialize components
     vault_client = VaultClient()
     encryption_manager = EncryptionManager(config.get('ENCRYPTION_KEY', 'default-key'))
     db_manager = DatabaseManager(config.get('DATABASE_URL'))
     
-    # Создание таблиц при запуске
+    # Create tables on startup
     try:
         db_manager.create_tables()
-        logger.info("База данных инициализирована")
+        logger.info("Database initialized")
     except Exception as e:
-        logger.error(f"Ошибка инициализации базы данных: {e}")
+        logger.error(f"Database initialization failed: {e}")
     
-    # Middleware для сбора метрик
+    # Metrics collection middleware
     @app.before_request
     def before_request():
         active_requests.inc()
@@ -71,10 +71,10 @@ def create_app():
         ).inc()
         return response
     
-    # API маршруты
+    # API routes
     @app.route('/api/health')
     def health_check():
-        """Проверка состояния API"""
+        """Health check endpoint"""
         return jsonify({
             'status': 'healthy',
             'environment': config.get('FLASK_ENV'),
@@ -83,49 +83,49 @@ def create_app():
     
     @app.route('/metrics')
     def metrics():
-        """Endpoint для метрик Prometheus"""
+        """Prometheus metrics endpoint"""
         try:
-            # Обновление системных метрик
+            # Update system metrics
             cpu_usage.set(psutil.cpu_percent(interval=1))
             memory_usage.set(psutil.virtual_memory().percent)
             disk_usage.set(psutil.disk_usage('/app').percent)
             
-            # Генерация метрик Prometheus
+            # Generate Prometheus metrics
             return Response(generate_latest(), mimetype='text/plain')
         except Exception as e:
-            logger.error(f"Ошибка генерации метрик: {e}")
+            logger.error(f"Metrics generation failed: {e}")
             return jsonify({'error': 'Metrics generation failed'}), 500
     
     @app.route('/api/request', methods=['POST'])
     def create_request():
-        """Создание нового зашифрованного запроса от CRM"""
+        """Create new encrypted request from CRM"""
         try:
-            # Получаем данные запроса
+            # Get request data
             data = request.get_json()
             if not data:
                 return jsonify({'error': 'No data provided'}), 400
             
-            # Обязательные поля включая токен
+            # Required fields including token
             required_fields = ['crm_id', 'request_type', 'payload', 'encrypted_key', 'token']
             for field in required_fields:
                 if field not in data:
                     return jsonify({'error': f'Missing required field: {field}'}), 400
             
-            # Проверяем токен в payload
+            # Validate token in payload
             if not vault_client.validate_payload_token(data, config.get('FLASK_ENV')):
                 return jsonify({'error': 'Invalid token in payload'}), 401
             
-            # Генерируем уникальный ID запроса
+            # Generate unique request ID
             request_id = str(uuid.uuid4())
             
-            # Проверяем валидность зашифрованного ключа
+            # Validate encrypted key format
             if not encryption_manager.validate_encrypted_data(data['encrypted_key']):
                 return jsonify({'error': 'Invalid encrypted key format'}), 400
             
-            # Генерируем checksum для проверки целостности
+            # Generate checksum for integrity verification
             checksum = encryption_manager.generate_checksum(data['payload'])
             
-            # Сохраняем запрос в базу данных
+            # Save request to database
             request_record = db_manager.create_request(
                 request_id=request_id,
                 crm_id=data['crm_id'],
@@ -138,7 +138,7 @@ def create_app():
             if not request_record:
                 return jsonify({'error': 'Failed to create request'}), 500
             
-            logger.info(f"Создан запрос {request_id} от CRM {data['crm_id']}")
+            logger.info(f"Request {request_id} created for CRM {data['crm_id']}")
             
             return jsonify({
                 'request_id': request_id,
@@ -147,19 +147,19 @@ def create_app():
             }), 201
             
         except Exception as e:
-            logger.error(f"Ошибка создания запроса: {e}")
+            logger.error(f"Request creation failed: {e}")
             return jsonify({'error': 'Internal server error'}), 500
     
     @app.route('/api/request/<request_id>', methods=['GET'])
     def get_request_status(request_id):
-        """Получение статуса запроса"""
+        """Get request status by ID"""
         try:
-            # Проверяем API ключ
+            # Check API key
             api_key = request.headers.get('X-API-Key')
             if not api_key or not vault_client.validate_api_key(api_key, config.get('FLASK_ENV')):
                 return jsonify({'error': 'Invalid API key'}), 401
             
-            # Получаем запрос из базы данных
+            # Get request from database
             request_record = db_manager.get_request(request_id)
             if not request_record:
                 return jsonify({'error': 'Request not found'}), 404
@@ -177,19 +177,19 @@ def create_app():
             })
             
         except Exception as e:
-            logger.error(f"Ошибка получения статуса запроса: {e}")
+            logger.error(f"Failed to get request status: {e}")
             return jsonify({'error': 'Internal server error'}), 500
     
     @app.route('/api/requests/crm/<crm_id>', methods=['GET'])
     def get_crm_requests(crm_id):
-        """Получение всех запросов для конкретного CRM"""
+        """Get all requests for specific CRM"""
         try:
-            # Проверяем API ключ
+            # Check API key
             api_key = request.headers.get('X-API-Key')
             if not api_key or not vault_client.validate_api_key(api_key, config.get('FLASK_ENV')):
                 return jsonify({'error': 'Invalid API key'}), 401
             
-            # Получаем запросы из базы данных
+            # Get requests from database
             requests = db_manager.get_requests_by_crm(crm_id)
             
             return jsonify({
@@ -207,23 +207,23 @@ def create_app():
             })
             
         except Exception as e:
-            logger.error(f"Ошибка получения запросов CRM: {e}")
+            logger.error(f"Failed to get CRM requests: {e}")
             return jsonify({'error': 'Internal server error'}), 500
     
     @app.route('/api/process', methods=['POST'])
     def process_pending_requests():
-        """Обработка ожидающих запросов (внутренний endpoint)"""
+        """Process pending requests (internal endpoint)"""
         try:
-            # Получаем данные запроса
+            # Get request data
             data = request.get_json()
             if not data:
                 return jsonify({'error': 'No data provided'}), 400
             
-            # Проверяем токен в payload
+            # Validate token in payload
             if not vault_client.validate_payload_token(data, config.get('FLASK_ENV')):
                 return jsonify({'error': 'Invalid token in payload'}), 401
             
-            # Инициализируем Jamf процессор
+            # Initialize Jamf processor
             from app.jamf_processor import JamfProcessor
             jamf_processor = JamfProcessor(
                 jamf_url=app.config['JAMF_PRO_URL'],
@@ -232,29 +232,29 @@ def create_app():
                 api_key=app.config['JAMF_PRO_API_KEY']
             )
             
-            # Получаем ожидающие запросы
+            # Get pending requests
             pending_requests = db_manager.get_pending_requests()
             
             processed_count = 0
             for request_record in pending_requests:
                 try:
-                    # Обновляем статус на "обрабатывается"
+                    # Update status to processing
                     db_manager.update_request_status(request_record.request_id, 'processing')
                     
-                    # Расшифровываем данные с проверкой целостности
+                    # Decrypt data with integrity check
                     decrypted_payload = encryption_manager.decrypt_and_verify(
                         request_record.payload, 
                         request_record.checksum
                     )
                     if not decrypted_payload:
-                        raise ValueError("Ошибка проверки целостности данных")
+                        raise ValueError("Data integrity check failed")
                     employee_data = json.loads(decrypted_payload)
                     
-                    # Обрабатываем запрос в зависимости от типа
+                    # Process request based on type
                     if request_record.request_type == 'create':
                         result = jamf_processor.create_computer_record(employee_data)
                     elif request_record.request_type == 'update':
-                        # Для обновления нужен jamf_pro_id
+                        # Need jamf_pro_id for updates
                         jamf_pro_id = request_record.jamf_pro_id or employee_data.get('jamf_pro_id')
                         if not jamf_pro_id:
                             raise ValueError("jamf_pro_id required for update")
@@ -267,7 +267,7 @@ def create_app():
                     else:
                         raise ValueError(f"Unsupported request type: {request_record.request_type}")
                     
-                    # Обновляем статус на основе результата
+                    # Update status based on result
                     if result and result.get('success'):
                         db_manager.update_request_status(
                             request_record.request_id, 
@@ -275,7 +275,7 @@ def create_app():
                             jamf_pro_id=result.get('jamf_pro_id')
                         )
                         processed_count += 1
-                        logger.info(f"Обработан запрос {request_record.request_id}")
+                        logger.info(f"Request {request_record.request_id} processed")
                     else:
                         error_msg = result.get('error', 'Unknown error') if result else 'No result'
                         db_manager.update_request_status(
@@ -283,10 +283,10 @@ def create_app():
                             'failed',
                             error_message=error_msg
                         )
-                        logger.error(f"Ошибка обработки запроса {request_record.request_id}: {error_msg}")
+                        logger.error(f"Failed to process request {request_record.request_id}: {error_msg}")
                     
                 except Exception as e:
-                    logger.error(f"Ошибка обработки запроса {request_record.request_id}: {e}")
+                    logger.error(f"Failed to process request {request_record.request_id}: {e}")
                     db_manager.update_request_status(
                         request_record.request_id, 
                         'failed',
@@ -299,7 +299,7 @@ def create_app():
             })
             
         except Exception as e:
-            logger.error(f"Ошибка обработки запросов: {e}")
+            logger.error(f"Failed to process requests: {e}")
             return jsonify({'error': 'Internal server error'}), 500
     
     return app

@@ -1,6 +1,6 @@
 """
-Конфигурация приложения
-Модуль для загрузки конфигурации из Vault и переменных окружения
+Application Configuration
+Module for loading configuration from Vault and environment variables
 """
 
 import os
@@ -8,69 +8,69 @@ import logging
 from typing import Dict, Any
 from dotenv import load_dotenv
 
-# Загружаем .env файл для локальной разработки
+# Load .env file for local development
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 class Config:
-    """Базовый класс конфигурации"""
+    """Base configuration class"""
     
     def __init__(self):
         self.config = {}
         self._load_config()
     
     def _load_config(self):
-        """Загрузка конфигурации из различных источников"""
-        # Приоритет: Vault > Переменные окружения > Значения по умолчанию
+        """Load configuration from various sources"""
+        # Priority: Vault > Environment variables > Default values
         
-        # 1. Пытаемся загрузить из Vault
+        # 1. Try to load from Vault
         vault_config = self._load_from_vault()
         if vault_config:
             self.config.update(vault_config)
-            logger.info("Конфигурация загружена из Vault")
+            logger.info("Configuration loaded from Vault")
         
-        # 2. Загружаем из переменных окружения
+        # 2. Load from environment variables
         env_config = self._load_from_env()
         self.config.update(env_config)
         
-        # 3. Устанавливаем значения по умолчанию
+        # 3. Set default values
         default_config = self._get_default_config()
         for key, value in default_config.items():
             if key not in self.config or not self.config[key]:
                 self.config[key] = value
     
     def _load_from_vault(self) -> Dict[str, str]:
-        """Загрузка конфигурации из Vault"""
+        """Load configuration from Vault"""
         try:
-            # Проверяем, доступен ли Vault
+            # Check if Vault is available
             if not (os.getenv('VAULT_ADDR') and os.getenv('VAULT_TOKEN')):
-                logger.info("Vault не настроен, пропускаем загрузку из Vault")
+                logger.info("Vault not configured, skipping Vault loading")
                 return {}
             
             from .vault_client import VaultClient
             vault_client = VaultClient()
             
-            # Тестируем подключение
+            # Test connection
             test_result = vault_client.test_connection()
             if not test_result['connected'] or not test_result['authenticated']:
-                logger.warning(f"Не удалось подключиться к Vault: {test_result.get('error')}")
+                logger.warning(f"Failed to connect to Vault: {test_result.get('error')}")
                 return {}
             
-            # Определяем окружение
+            # Determine environment
             environment = os.getenv('FLASK_ENV', 'dev')
             if environment not in ['dev', 'prod']:
                 environment = 'dev'
             
-            # Получаем конфигурацию для конкретного окружения
+            # Get configuration for specific environment
             return vault_client.get_jamf_config(environment)
             
         except Exception as e:
-            logger.error(f"Ошибка загрузки конфигурации из Vault: {e}")
+            logger.error(f"Failed to load config from Vault: {e}")
             return {}
     
     def _load_from_env(self) -> Dict[str, str]:
-        """Загрузка конфигурации из переменных окружения"""
+        """Load configuration from environment variables"""
         env_vars = [
             'JAMF_PRO_URL',
             'JAMF_PRO_USERNAME', 
@@ -92,7 +92,7 @@ class Config:
         return config
     
     def _get_default_config(self) -> Dict[str, str]:
-        """Получение конфигурации по умолчанию"""
+        """Get default configuration"""
         return {
             'SECRET_KEY': 'dev-secret-key-change-in-production',
             'FLASK_ENV': 'dev',
@@ -109,18 +109,18 @@ class Config:
         }
     
     def get(self, key: str, default: Any = None) -> Any:
-        """Получение значения конфигурации"""
+        """Get configuration value"""
         return self.config.get(key, default)
     
     def get_bool(self, key: str, default: bool = False) -> bool:
-        """Получение булевого значения конфигурации"""
+        """Get boolean configuration value"""
         value = self.config.get(key, default)
         if isinstance(value, str):
             return value.lower() in ('true', '1', 'yes', 'on')
         return bool(value)
     
     def get_int(self, key: str, default: int = 0) -> int:
-        """Получение целочисленного значения конфигурации"""
+        """Get integer configuration value"""
         value = self.config.get(key, default)
         try:
             return int(value)
@@ -128,19 +128,19 @@ class Config:
             return default
     
     def to_dict(self) -> Dict[str, Any]:
-        """Получение всей конфигурации в виде словаря"""
+        """Get all configuration as dictionary"""
         return self.config.copy()
     
     def is_vault_enabled(self) -> bool:
-        """Проверка, включена ли интеграция с Vault"""
+        """Check if Vault integration is enabled"""
         return bool(os.getenv('VAULT_ADDR') and os.getenv('VAULT_TOKEN'))
     
     def get_vault_status(self) -> Dict[str, Any]:
-        """Получение статуса подключения к Vault"""
+        """Get Vault connection status"""
         if not self.is_vault_enabled():
             return {
                 'enabled': False,
-                'reason': 'Vault не настроен (отсутствуют VAULT_ADDR или VAULT_TOKEN)'
+                'reason': 'Vault not configured (missing VAULT_ADDR or VAULT_TOKEN)'
             }
         
         try:
@@ -155,5 +155,5 @@ class Config:
                 'error': str(e)
             }
 
-# Глобальный экземпляр конфигурации
+# Global configuration instance
 config = Config()

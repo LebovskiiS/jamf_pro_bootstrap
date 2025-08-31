@@ -1,6 +1,6 @@
 """
 Encryption Module
-Модуль для шифрования и дешифрования данных
+Module for data encryption and decryption
 """
 
 import os
@@ -15,60 +15,60 @@ from typing import Optional, Tuple
 logger = logging.getLogger(__name__)
 
 class EncryptionManager:
-    """Менеджер шифрования"""
+    """Encryption manager"""
     
     def __init__(self, secret_key: str):
         """
-        Инициализация менеджера шифрования
+        Initialize encryption manager
         
         Args:
-            secret_key: Секретный ключ для шифрования
+            secret_key: Secret key for encryption
         """
         self.secret_key = secret_key.encode()
         self.fernet = self._create_fernet()
     
     def _create_fernet(self) -> Fernet:
-        """Создание Fernet объекта для шифрования"""
+        """Create Fernet object for encryption"""
         try:
-            # Используем PBKDF2 для генерации ключа
+            # Use PBKDF2 for key generation
             kdf = PBKDF2HMAC(
                 algorithm=hashes.SHA256(),
                 length=32,
-                salt=b'jamf_bootstrap_salt',  # Фиксированная соль для совместимости
+                salt=b'jamf_bootstrap_salt',  # Fixed salt for compatibility
                 iterations=100000,
             )
             key = base64.urlsafe_b64encode(kdf.derive(self.secret_key))
             return Fernet(key)
         except Exception as e:
-            logger.error(f"Ошибка создания Fernet: {e}")
+            logger.error(f"Failed to create Fernet: {e}")
             raise
     
     def encrypt_data(self, data: str) -> str:
         """
-        Шифрование данных
+        Encrypt data
         
         Args:
-            data: Данные для шифрования
+            data: Data to encrypt
             
         Returns:
-            Зашифрованные данные в base64
+            Encrypted data in base64
         """
         try:
             encrypted_data = self.fernet.encrypt(data.encode())
             return base64.urlsafe_b64encode(encrypted_data).decode()
         except Exception as e:
-            logger.error(f"Ошибка шифрования данных: {e}")
+            logger.error(f"Data encryption failed: {e}")
             raise
     
     def decrypt_data(self, encrypted_data: str) -> str:
         """
-        Дешифрование данных
+        Decrypt data
         
         Args:
-            encrypted_data: Зашифрованные данные в base64
+            encrypted_data: Encrypted data in base64
             
         Returns:
-            Расшифрованные данные
+            Decrypted data
         """
         try:
             # Декодируем из base64
@@ -77,106 +77,106 @@ class EncryptionManager:
             decrypted_data = self.fernet.decrypt(encrypted_bytes)
             return decrypted_data.decode()
         except Exception as e:
-            logger.error(f"Ошибка дешифрования данных: {e}")
+            logger.error(f"Data decryption failed: {e}")
             raise
     
     def generate_checksum(self, data: str) -> str:
         """
-        Генерация SHA256 хеша для проверки целостности
+        Generate SHA256 hash for integrity verification
         
         Args:
-            data: Данные для хеширования
+            data: Data to hash
             
         Returns:
-            SHA256 хеш в hex формате
+            SHA256 hash in hex format
         """
         try:
             return hashlib.sha256(data.encode()).hexdigest()
         except Exception as e:
-            logger.error(f"Ошибка генерации checksum: {e}")
+            logger.error(f"Checksum generation failed: {e}")
             raise
     
     def verify_checksum(self, data: str, expected_checksum: str) -> bool:
         """
-        Проверка целостности данных
+        Verify data integrity
         
         Args:
-            data: Данные для проверки
-            expected_checksum: Ожидаемый checksum
+            data: Data to verify
+            expected_checksum: Expected checksum
             
         Returns:
-            True если checksum совпадает, False иначе
+            True if checksum matches, False otherwise
         """
         try:
             actual_checksum = self.generate_checksum(data)
             return actual_checksum == expected_checksum
         except Exception as e:
-            logger.error(f"Ошибка проверки checksum: {e}")
+            logger.error(f"Checksum verification failed: {e}")
             return False
     
     def encrypt_with_checksum(self, data: str) -> Tuple[str, str]:
         """
-        Шифрование данных с генерацией checksum
+        Encrypt data with checksum generation
         
         Args:
-            data: Данные для шифрования
+            data: Data to encrypt
             
         Returns:
-            Кортеж (зашифрованные_данные, checksum)
+            Tuple (encrypted_data, checksum)
         """
         try:
             encrypted_data = self.encrypt_data(data)
             checksum = self.generate_checksum(data)
             return encrypted_data, checksum
         except Exception as e:
-            logger.error(f"Ошибка шифрования с checksum: {e}")
+            logger.error(f"Encryption with checksum failed: {e}")
             raise
     
     def decrypt_and_verify(self, encrypted_data: str, expected_checksum: str) -> Optional[str]:
         """
-        Дешифрование данных с проверкой целостности
+        Decrypt data with integrity verification
         
         Args:
-            encrypted_data: Зашифрованные данные
-            expected_checksum: Ожидаемый checksum
+            encrypted_data: Encrypted data
+            expected_checksum: Expected checksum
             
         Returns:
-            Расшифрованные данные или None если проверка не прошла
+            Decrypted data or None if verification failed
         """
         try:
             decrypted_data = self.decrypt_data(encrypted_data)
             if self.verify_checksum(decrypted_data, expected_checksum):
                 return decrypted_data
             else:
-                logger.warning("Checksum не совпадает - возможна порча данных")
+                logger.warning("Checksum mismatch - possible data corruption")
                 return None
         except Exception as e:
-            logger.error(f"Ошибка дешифрования с проверкой: {e}")
+            logger.error(f"Decryption with verification failed: {e}")
             return None
     
     def generate_encryption_key(self) -> str:
         """
-        Генерация нового ключа шифрования
+        Generate new encryption key
         
         Returns:
-            Новый ключ в base64
+            New key in base64
         """
         try:
             key = Fernet.generate_key()
             return base64.urlsafe_b64encode(key).decode()
         except Exception as e:
-            logger.error(f"Ошибка генерации ключа: {e}")
+            logger.error(f"Key generation failed: {e}")
             raise
     
     def validate_encrypted_data(self, encrypted_data: str) -> bool:
         """
-        Проверка валидности зашифрованных данных
+        Validate encrypted data
         
         Args:
-            encrypted_data: Зашифрованные данные
+            encrypted_data: Encrypted data
             
         Returns:
-            True если данные валидны, False иначе
+            True if data is valid, False otherwise
         """
         try:
             # Пытаемся декодировать из base64

@@ -1,6 +1,6 @@
 """
 Database Module
-Модуль для работы с Google Cloud PostgreSQL
+Module for Google Cloud PostgreSQL operations
 """
 
 import os
@@ -17,37 +17,37 @@ logger = logging.getLogger(__name__)
 Base = declarative_base()
 
 class JamfRequest(Base):
-    """Модель для хранения запросов к Jamf Pro"""
+    """Model for storing Jamf Pro requests"""
     __tablename__ = 'jamf_requests'
     
-    # Основные поля
+    # Primary fields
     id = Column(Integer, primary_key=True)
     request_id = Column(String(255), unique=True, nullable=False)
     crm_id = Column(String(255), nullable=False)
     jamf_pro_id = Column(String(255), nullable=True)
     
-    # Статус и тип запроса
+    # Status and request type
     status = Column(String(50), default='pending')  # pending, processing, completed, failed
     request_type = Column(String(100), nullable=False)  # create, update, delete
     
-    # Зашифрованные данные (всегда в base64)
-    payload = Column(Text, nullable=False)  # Зашифрованные данные сотрудника
-    encrypted_key = Column(String(500), nullable=False)  # Зашифрованный ключ для расшифровки
+    # Encrypted data (always in base64)
+    payload = Column(Text, nullable=False)  # Encrypted employee data
+    encrypted_key = Column(String(500), nullable=False)  # Encrypted key for decryption
     
-    # Метаданные
+    # Metadata
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     processed_at = Column(DateTime, nullable=True)
     
-    # Обработка ошибок
+    # Error handling
     error_message = Column(Text, nullable=True)
     retry_count = Column(Integer, default=0)
     
-    # Безопасность
-    encryption_version = Column(String(10), default='v1')  # Версия шифрования
-    checksum = Column(String(64), nullable=True)  # SHA256 хеш для проверки целостности
+    # Security
+    encryption_version = Column(String(10), default='v1')  # Encryption version
+    checksum = Column(String(64), nullable=True)  # SHA256 hash for integrity check
     
-    # Индексы для производительности
+    # Performance indexes
     __table_args__ = (
         Index('idx_crm_id', 'crm_id'),
         Index('idx_status', 'status'),
@@ -56,7 +56,7 @@ class JamfRequest(Base):
     )
 
 class DatabaseManager:
-    """Менеджер базы данных"""
+    """Database manager"""
     
     def __init__(self, connection_string: str):
         self.connection_string = connection_string
@@ -65,9 +65,9 @@ class DatabaseManager:
         self._initialize()
     
     def _initialize(self):
-        """Инициализация подключения к базе данных"""
+        """Initialize database connection"""
         try:
-            # Настройки для PostgreSQL
+            # PostgreSQL settings
             self.engine = create_engine(
                 self.connection_string,
                 pool_pre_ping=True,
@@ -75,42 +75,42 @@ class DatabaseManager:
                 pool_size=10,
                 max_overflow=20,
                 echo=False,
-                # PostgreSQL специфичные настройки
+                # PostgreSQL specific settings
                 connect_args={
                     "options": "-c timezone=utc"
                 }
             )
             self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
-            logger.info("База данных PostgreSQL инициализирована")
+            logger.info("PostgreSQL database initialized")
         except Exception as e:
-            logger.error(f"Ошибка инициализации базы данных: {e}")
+            logger.error(f"Database initialization failed: {e}")
             raise
     
     def create_tables(self):
-        """Создание таблиц если они не существуют"""
+        """Create tables if they don't exist"""
         try:
             Base.metadata.create_all(bind=self.engine)
-            logger.info("Таблицы PostgreSQL созданы/проверены")
+            logger.info("PostgreSQL tables created/verified")
         except Exception as e:
-            logger.error(f"Ошибка создания таблиц: {e}")
+            logger.error(f"Table creation failed: {e}")
             raise
     
     def get_session(self):
-        """Получение сессии базы данных"""
+        """Get database session"""
         return self.SessionLocal()
     
     def create_request(self, request_id: str, crm_id: str, request_type: str, 
                       payload: str, encrypted_key: str, checksum: str = None) -> Optional[JamfRequest]:
         """
-        Создание нового запроса
+        Create new request
         
         Args:
-            request_id: Уникальный ID запроса
-            crm_id: ID CRM системы
-            request_type: Тип запроса (create, update, delete)
-            payload: Зашифрованные данные сотрудника (base64)
-            encrypted_key: Зашифрованный ключ (base64)
-            checksum: SHA256 хеш для проверки целостности
+            request_id: Unique request ID
+            crm_id: CRM system ID
+            request_type: Request type (create, update, delete)
+            payload: Encrypted employee data (base64)
+            encrypted_key: Encrypted key (base64)
+            checksum: SHA256 hash for integrity verification
         """
         session = self.get_session()
         try:
@@ -126,29 +126,29 @@ class DatabaseManager:
             session.add(request)
             session.commit()
             session.refresh(request)
-            logger.info(f"Создан запрос {request_id} для CRM {crm_id}")
+            logger.info(f"Created request {request_id} for CRM {crm_id}")
             return request
         except SQLAlchemyError as e:
             session.rollback()
-            logger.error(f"Ошибка создания запроса: {e}")
+            logger.error(f"Failed to create request: {e}")
             return None
         finally:
             session.close()
     
     def get_request(self, request_id: str) -> Optional[JamfRequest]:
-        """Получение запроса по ID"""
+        """Get request by ID"""
         session = self.get_session()
         try:
             return session.query(JamfRequest).filter(JamfRequest.request_id == request_id).first()
         except SQLAlchemyError as e:
-            logger.error(f"Ошибка получения запроса {request_id}: {e}")
+            logger.error(f"Failed to get request {request_id}: {e}")
             return None
         finally:
             session.close()
     
     def update_request_status(self, request_id: str, status: str, 
                             jamf_pro_id: str = None, error_message: str = None) -> bool:
-        """Обновление статуса запроса"""
+        """Update request status"""
         session = self.get_session()
         try:
             request = session.query(JamfRequest).filter(JamfRequest.request_id == request_id).first()
@@ -162,18 +162,18 @@ class DatabaseManager:
                 if status in ['completed', 'failed']:
                     request.processed_at = datetime.utcnow()
                 session.commit()
-                logger.info(f"Обновлен статус запроса {request_id} на {status}")
+                logger.info(f"Updated request {request_id} status to {status}")
                 return True
             return False
         except SQLAlchemyError as e:
             session.rollback()
-            logger.error(f"Ошибка обновления статуса запроса {request_id}: {e}")
+            logger.error(f"Failed to update request {request_id} status: {e}")
             return False
         finally:
             session.close()
     
     def get_pending_requests(self, limit: int = 100) -> list:
-        """Получение ожидающих запросов с лимитом"""
+        """Get pending requests with limit"""
         session = self.get_session()
         try:
             return session.query(JamfRequest)\
@@ -182,13 +182,13 @@ class DatabaseManager:
                 .limit(limit)\
                 .all()
         except SQLAlchemyError as e:
-            logger.error(f"Ошибка получения ожидающих запросов: {e}")
+            logger.error(f"Failed to get pending requests: {e}")
             return []
         finally:
             session.close()
     
     def get_requests_by_crm(self, crm_id: str, limit: int = 50) -> list:
-        """Получение запросов для конкретного CRM"""
+        """Get requests for specific CRM"""
         session = self.get_session()
         try:
             return session.query(JamfRequest)\
@@ -197,7 +197,7 @@ class DatabaseManager:
                 .limit(limit)\
                 .all()
         except SQLAlchemyError as e:
-            logger.error(f"Ошибка получения запросов для CRM {crm_id}: {e}")
+            logger.error(f"Failed to get requests for CRM {crm_id}: {e}")
             return []
         finally:
             session.close()
@@ -216,7 +216,7 @@ class DatabaseManager:
             return deleted
         except SQLAlchemyError as e:
             session.rollback()
-            logger.error(f"Ошибка очистки старых запросов: {e}")
+            logger.error(f"Failed to cleanup old requests: {e}")
             return 0
         finally:
             session.close()

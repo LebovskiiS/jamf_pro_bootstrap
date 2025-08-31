@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Пример тестового запроса от CRM системы к Jamf Pro Bootstrap API
+Example test request from CRM system to Jamf Pro Bootstrap API
 """
 
 import requests
@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 def create_fernet(key: str) -> Fernet:
-    """Создание Fernet объекта для шифрования"""
+    """Create Fernet object for encryption"""
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
@@ -23,32 +23,32 @@ def create_fernet(key: str) -> Fernet:
     return Fernet(key_bytes)
 
 def encrypt_data(data: str, key: str) -> str:
-    """Шифрование данных"""
+    """Encrypt data"""
     fernet = create_fernet(key)
     encrypted_data = fernet.encrypt(data.encode())
     return base64.urlsafe_b64encode(encrypted_data).decode()
 
 def encrypt_key_with_vault_key(key: str, vault_key: str) -> str:
-    """Шифрование ключа ключом из Vault"""
+    """Encrypt key with Vault key"""
     vault_fernet = Fernet(base64.urlsafe_b64encode(vault_key.encode()))
     encrypted_key = vault_fernet.encrypt(key.encode())
     return base64.urlsafe_b64encode(encrypted_key).decode()
 
 def generate_checksum(data: str) -> str:
-    """Генерация SHA256 хеша"""
+    """Generate SHA256 hash"""
     return hashlib.sha256(data.encode()).hexdigest()
 
 def main():
-    # Конфигурация (в реальной системе эти данные берутся из Vault)
+    # Configuration (in real system these come from Vault)
     VAULT_URL = "https://vault.your-domain.com"
     JAMF_API_ENDPOINT = "https://your-vm-ip:5000/api/request"
     
-    # Секреты (в реальной системе получаются из Vault)
+    # Secrets (in real system obtained from Vault)
     API_TOKEN = "your-api-token-from-vault"
     ENCRYPTION_KEY = "your-32-character-encryption-key"
     VAULT_ENCRYPTION_KEY = "vault-encryption-key-for-key-encryption"
     
-    # Данные сотрудника
+    # Employee data
     employee_data = {
         "employee_id": "E12345",
         "email": "user@example.com",
@@ -62,23 +62,23 @@ def main():
     }
     
     try:
-        # 1. Подготавливаем данные
+        # 1. Prepare data
         employee_json = json.dumps(employee_data, sort_keys=True)
-        print(f"📋 Данные сотрудника: {employee_json}")
+        print(f"📋 Employee data: {employee_json}")
         
-        # 2. Шифруем данные сотрудника
+        # 2. Encrypt employee data
         encrypted_payload = encrypt_data(employee_json, ENCRYPTION_KEY)
-        print(f"🔒 Зашифрованные данные: {encrypted_payload[:50]}...")
+        print(f"🔒 Encrypted data: {encrypted_payload[:50]}...")
         
-        # 3. Шифруем ключ ключом из Vault
+        # 3. Encrypt key with Vault key
         encrypted_key = encrypt_key_with_vault_key(ENCRYPTION_KEY, VAULT_ENCRYPTION_KEY)
-        print(f"🔑 Зашифрованный ключ: {encrypted_key[:50]}...")
+        print(f"🔑 Encrypted key: {encrypted_key[:50]}...")
         
-        # 4. Генерируем checksum
+        # 4. Generate checksum
         checksum = generate_checksum(employee_json)
         print(f"📊 Checksum: {checksum}")
         
-        # 5. Формируем запрос
+        # 5. Build request
         request_data = {
             'crm_id': f"crm-{employee_data['employee_id']}",
             'request_type': 'create',
@@ -87,10 +87,10 @@ def main():
             'token': API_TOKEN
         }
         
-        print(f"📤 Отправляем запрос на: {JAMF_API_ENDPOINT}")
-        print(f"📦 Данные запроса: {json.dumps(request_data, indent=2)}")
+        print(f"📤 Sending request to: {JAMF_API_ENDPOINT}")
+        print(f"📦 Request data: {json.dumps(request_data, indent=2)}")
         
-        # 6. Отправляем запрос
+        # 6. Send request
         response = requests.post(
             JAMF_API_ENDPOINT,
             json=request_data,
@@ -98,16 +98,16 @@ def main():
             timeout=30
         )
         
-        print(f"📥 Статус ответа: {response.status_code}")
+        print(f"📥 Response status: {response.status_code}")
         
         if response.status_code == 200:
             result = response.json()
-            print(f"✅ Успешный ответ: {json.dumps(result, indent=2)}")
+            print(f"✅ Success response: {json.dumps(result, indent=2)}")
         else:
-            print(f"❌ Ошибка: {response.status_code} - {response.text}")
+            print(f"❌ Error: {response.status_code} - {response.text}")
             
     except Exception as e:
-        print(f"💥 Ошибка: {e}")
+        print(f"💥 Exception: {e}")
 
 if __name__ == "__main__":
     main()

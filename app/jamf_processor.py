@@ -12,17 +12,17 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 class JamfProcessor:
-    """Процессор для работы с Jamf Pro API"""
+    """Processor for Jamf Pro API operations"""
     
     def __init__(self, jamf_url: str, username: str, password: str, api_key: str = None):
         """
-        Инициализация процессора Jamf Pro
+        Initialize Jamf Pro processor
         
         Args:
-            jamf_url: URL Jamf Pro сервера
-            username: Имя пользователя
-            password: Пароль
-            api_key: API ключ (опционально)
+            jamf_url: Jamf Pro server URL
+            username: Username
+            password: Password
+            api_key: API key (optional)
         """
         self.jamf_url = jamf_url.rstrip('/')
         self.username = username
@@ -30,7 +30,7 @@ class JamfProcessor:
         self.api_key = api_key
         self.session = requests.Session()
         
-        # Настройка сессии
+        # Configure session
         self.session.headers.update({
             'Content-Type': 'application/json',
             'Accept': 'application/json'
@@ -40,7 +40,7 @@ class JamfProcessor:
             self.session.headers['Authorization'] = f'Bearer {self.api_key}'
     
     def _get_auth_token(self) -> Optional[str]:
-        """Получение токена аутентификации"""
+        """Get authentication token"""
         try:
             auth_url = f"{self.jamf_url}/api/v1/auth/token"
             response = self.session.post(
@@ -53,19 +53,19 @@ class JamfProcessor:
                 token_data = response.json()
                 return token_data.get('token')
             else:
-                logger.error(f"Ошибка получения токена: {response.status_code}")
+                logger.error(f"Failed to get token: {response.status_code}")
                 return None
                 
         except Exception as e:
-            logger.error(f"Ошибка аутентификации в Jamf Pro: {e}")
+            logger.error(f"Jamf Pro authentication failed: {e}")
             return None
     
     def _make_request(self, method: str, endpoint: str, data: Dict = None) -> Optional[Dict]:
-        """Выполнение запроса к Jamf Pro API"""
+        """Execute request to Jamf Pro API"""
         try:
             url = f"{self.jamf_url}/api/v1{endpoint}"
             
-            # Если нет API ключа, получаем токен
+            # If no API key, get token
             if not self.api_key:
                 token = self._get_auth_token()
                 if token:
@@ -83,34 +83,34 @@ class JamfProcessor:
             if response.status_code in [200, 201]:
                 return response.json()
             else:
-                logger.error(f"Ошибка запроса к Jamf Pro: {response.status_code} - {response.text}")
+                logger.error(f"Jamf Pro request failed: {response.status_code} - {response.text}")
                 return None
                 
         except Exception as e:
-            logger.error(f"Ошибка выполнения запроса к Jamf Pro: {e}")
+            logger.error(f"Failed to execute Jamf Pro request: {e}")
             return None
     
     def create_computer_record(self, employee_data: Dict[str, Any]) -> Optional[Dict]:
         """
-        Создание записи компьютера в Jamf Pro
+        Create computer record in Jamf Pro
         
         Args:
-            employee_data: Данные сотрудника и устройства
+            employee_data: Employee and device data
             
         Returns:
-            Результат создания записи
+            Record creation result
         """
         try:
-            # Извлекаем данные
+            # Extract data
             employee_id = employee_data.get('employee_id')
             email = employee_data.get('email')
             full_name = employee_data.get('full_name')
             device = employee_data.get('device', {})
             
             if not all([employee_id, email, full_name, device]):
-                raise ValueError("Неполные данные сотрудника")
+                raise ValueError("Incomplete employee data")
             
-            # Формируем данные для Jamf Pro
+            # Build data for Jamf Pro
             computer_data = {
                 "general": {
                     "name": f"{full_name} - {employee_id}",
@@ -147,11 +147,11 @@ class JamfProcessor:
                 ]
             }
             
-            # Создаем запись
+            # Create record
             result = self._make_request('POST', '/computers', computer_data)
             
             if result:
-                logger.info(f"Создана запись компьютера для сотрудника {employee_id}")
+                logger.info(f"Created computer record for employee {employee_id}")
                 return {
                     'success': True,
                     'jamf_pro_id': result.get('id'),
@@ -164,7 +164,7 @@ class JamfProcessor:
                 }
                 
         except Exception as e:
-            logger.error(f"Ошибка создания записи компьютера: {e}")
+            logger.error(f"Failed to create computer record: {e}")
             return {
                 'success': False,
                 'error': str(e)
@@ -172,17 +172,17 @@ class JamfProcessor:
     
     def update_computer_record(self, jamf_pro_id: str, employee_data: Dict[str, Any]) -> Optional[Dict]:
         """
-        Обновление записи компьютера в Jamf Pro
+        Update computer record in Jamf Pro
         
         Args:
-            jamf_pro_id: ID записи в Jamf Pro
-            employee_data: Обновленные данные сотрудника
+            jamf_pro_id: Record ID in Jamf Pro
+            employee_data: Updated employee data
             
         Returns:
-            Результат обновления записи
+            Record update result
         """
         try:
-            # Получаем текущую запись
+            # Get current record
             current_record = self._make_request('GET', f'/computers/id/{jamf_pro_id}')
             if not current_record:
                 return {
@@ -225,7 +225,7 @@ class JamfProcessor:
                 }
                 
         except Exception as e:
-            logger.error(f"Ошибка обновления записи компьютера: {e}")
+            logger.error(f"Failed to update computer record: {e}")
             return {
                 'success': False,
                 'error': str(e)
@@ -233,13 +233,13 @@ class JamfProcessor:
     
     def delete_computer_record(self, jamf_pro_id: str) -> Optional[Dict]:
         """
-        Удаление записи компьютера из Jamf Pro
+        Delete computer record from Jamf Pro
         
         Args:
-            jamf_pro_id: ID записи в Jamf Pro
+            jamf_pro_id: Record ID in Jamf Pro
             
         Returns:
-            Результат удаления записи
+            Record deletion result
         """
         try:
             result = self._make_request('DELETE', f'/computers/id/{jamf_pro_id}')
@@ -257,7 +257,7 @@ class JamfProcessor:
                 }
                 
         except Exception as e:
-            logger.error(f"Ошибка удаления записи компьютера: {e}")
+            logger.error(f"Failed to delete computer record: {e}")
             return {
                 'success': False,
                 'error': str(e)
@@ -265,19 +265,19 @@ class JamfProcessor:
     
     def find_computer_by_serial(self, serial_number: str) -> Optional[Dict]:
         """
-        Поиск компьютера по серийному номеру
+        Find computer by serial number
         
         Args:
-            serial_number: Серийный номер устройства
+            serial_number: Device serial number
             
         Returns:
-            Данные компьютера или None
+            Computer data or None
         """
         try:
             result = self._make_request('GET', f'/computers/serialnumber/{serial_number}')
             return result
         except Exception as e:
-            logger.error(f"Ошибка поиска компьютера по серийному номеру: {e}")
+            logger.error(f"Failed to find computer by serial number: {e}")
             return None
     
     def test_connection(self) -> Dict[str, Any]:

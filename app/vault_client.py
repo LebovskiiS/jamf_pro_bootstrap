@@ -1,6 +1,6 @@
 """
 HashiCorp Vault Client
-Модуль для работы с HashiCorp Vault для получения секретов
+Module for interacting with HashiCorp Vault to retrieve secrets
 """
 
 import os
@@ -11,27 +11,27 @@ import hvac
 logger = logging.getLogger(__name__)
 
 class VaultClient:
-    """Клиент для работы с HashiCorp Vault"""
+    """Client for HashiCorp Vault operations"""
     
     def __init__(self, vault_url: Optional[str] = None, auth_method: str = 'token'):
         """
-        Инициализация клиента Vault
+        Initialize Vault client
         
         Args:
-            vault_url: URL сервера Vault (по умолчанию из VAULT_ADDR)
-            auth_method: Метод аутентификации (token, approle, gcp)
+            vault_url: Vault server URL (defaults to VAULT_ADDR)
+            auth_method: Authentication method (token, approle, gcp)
         """
         self.vault_url = vault_url or os.getenv('VAULT_ADDR')
         self.auth_method = auth_method
         
         if not self.vault_url:
-            raise ValueError("Vault URL не указан. Установите VAULT_ADDR или передайте vault_url")
+            raise ValueError("Vault URL not specified. Set VAULT_ADDR or pass vault_url")
         
         self.client = hvac.Client(url=self.vault_url)
         self._authenticate()
     
     def _authenticate(self):
-        """Аутентификация в Vault"""
+        """Authenticate with Vault"""
         try:
             if self.auth_method == 'token':
                 self._authenticate_with_token()
@@ -40,27 +40,27 @@ class VaultClient:
             elif self.auth_method == 'gcp':
                 self._authenticate_with_gcp()
             else:
-                raise ValueError(f"Неподдерживаемый метод аутентификации: {self.auth_method}")
+                raise ValueError(f"Unsupported authentication method: {self.auth_method}")
                 
         except Exception as e:
-            logger.error(f"Ошибка аутентификации в Vault: {e}")
+            logger.error(f"Vault authentication failed: {e}")
             raise
     
     def _authenticate_with_token(self):
-        """Аутентификация с помощью токена"""
+        """Authenticate using token"""
         token = os.getenv('VAULT_TOKEN')
         if not token:
-            raise ValueError("Vault токен не указан. Установите VAULT_TOKEN")
+            raise ValueError("Vault token not specified. Set VAULT_TOKEN")
         
         self.client.token = token
     
     def _authenticate_with_approle(self):
-        """Аутентификация с помощью AppRole"""
+        """Authenticate using AppRole"""
         role_id = os.getenv('VAULT_ROLE_ID')
         secret_id = os.getenv('VAULT_SECRET_ID')
         
         if not role_id or not secret_id:
-            raise ValueError("AppRole не настроен. Установите VAULT_ROLE_ID и VAULT_SECRET_ID")
+            raise ValueError("AppRole not configured. Set VAULT_ROLE_ID and VAULT_SECRET_ID")
         
         response = self.client.auth.approle.login(
             role_id=role_id,
@@ -70,17 +70,17 @@ class VaultClient:
         if response and 'auth' in response:
             self.client.token = response['auth']['client_token']
         else:
-            raise ValueError("Не удалось получить токен через AppRole")
+            raise ValueError("Failed to get token via AppRole")
     
 
     
     def _authenticate_with_gcp(self):
-        """Аутентификация с помощью GCP IAM"""
+        """Authenticate using GCP IAM"""
         role = os.getenv('VAULT_GCP_ROLE')
         jwt = os.getenv('VAULT_GCP_JWT')
         
         if not role or not jwt:
-            raise ValueError("GCP аутентификация не настроена")
+            raise ValueError("GCP authentication not configured")
         
         response = self.client.auth.gcp.login(
             role=role,
@@ -90,33 +90,33 @@ class VaultClient:
         if response and 'auth' in response:
             self.client.token = response['auth']['client_token']
         else:
-            raise ValueError("Не удалось получить токен через GCP IAM")
+            raise ValueError("Failed to get token via GCP IAM")
     
     def is_authenticated(self) -> bool:
-        """Проверка аутентификации в Vault"""
+        """Check Vault authentication status"""
         try:
             return self.client.is_authenticated()
         except Exception as e:
-            logger.error(f"Ошибка проверки аутентификации Vault: {e}")
+            logger.error(f"Vault authentication check failed: {e}")
             return False
     
     def get_secret(self, path: str, key: Optional[str] = None) -> Any:
         """
-        Получение секрета из Vault
+        Get secret from Vault
         
         Args:
-            path: Путь к секрету в Vault (например, 'secret/jamf-pro')
-            key: Ключ секрета (если None, возвращает весь секрет)
+            path: Secret path in Vault (e.g., 'secret/jamf-pro')
+            key: Secret key (if None, returns entire secret)
             
         Returns:
-            Значение секрета или None если не найден
+            Secret value or None if not found
         """
         try:
             if not self.is_authenticated():
-                logger.error("Не удалось аутентифицироваться в Vault")
+                logger.error("Failed to authenticate with Vault")
                 return None
             
-            # Читаем секрет
+            # Read secret
             secret_response = self.client.secrets.kv.v2.read_secret_version(path=path)
             
             if secret_response and 'data' in secret_response:
@@ -127,29 +127,29 @@ class VaultClient:
                 else:
                     return secret_data
             else:
-                logger.warning(f"Секрет не найден по пути: {path}")
+                logger.warning(f"Secret not found at path: {path}")
                 return None
                 
         except hvac.exceptions.InvalidPath:
-            logger.warning(f"Путь к секрету не найден: {path}")
+            logger.warning(f"Secret path not found: {path}")
             return None
         except Exception as e:
-            logger.error(f"Ошибка получения секрета из Vault: {e}")
+            logger.error(f"Failed to get secret from Vault: {e}")
             return None
     
     def get_jamf_config(self, environment: str = 'dev') -> Dict[str, str]:
         """
-        Получение конфигурации Jamf Pro из Vault
+        Get Jamf Pro configuration from Vault
         
         Args:
-            environment: Окружение (dev/prod)
+            environment: Environment (dev/prod)
             
         Returns:
-            Словарь с конфигурацией Jamf Pro
+            Dictionary with Jamf Pro configuration
         """
         config = {}
         
-        # Получаем конфигурацию Jamf Pro для конкретного окружения
+        # Get Jamf Pro config for specific environment
         jamf_secret = self.get_secret(f'secret/jamf-pro-{environment}')
         if jamf_secret:
             config.update({
@@ -161,7 +161,7 @@ class VaultClient:
                 'JAMF_PRO_API_KEY': jamf_secret.get('api_key', '')
             })
         
-        # Получаем общие настройки приложения для окружения
+        # Get app settings for environment
         app_secret = self.get_secret(f'secret/jamf-bootstrap-{environment}')
         if app_secret:
             config.update({
@@ -173,10 +173,10 @@ class VaultClient:
                 'API_SECRET': app_secret.get('api_secret', '')
             })
         
-        # Получаем настройки базы данных PostgreSQL
+        # Get PostgreSQL database settings
         db_secret = self.get_secret(f'secret/database-{environment}')
         if db_secret:
-            # Используем внутренний IP для подключения к PostgreSQL
+            # Use internal IP for PostgreSQL connection
             db_host = os.getenv('POSTGRES_INTERNAL_IP', '10.79.160.3')
             
             config.update({
@@ -210,13 +210,13 @@ class VaultClient:
     
     def get_encryption_key(self, environment: str = 'dev') -> Optional[str]:
         """
-        Получение ключа шифрования из Vault
+        Get encryption key from Vault
         
         Args:
-            environment: Окружение (dev/prod)
+            environment: Environment (dev/prod)
             
         Returns:
-            Ключ шифрования или None
+            Encryption key or None
         """
         app_secret = self.get_secret(f'secret/jamf-bootstrap-{environment}')
         if app_secret:
@@ -225,84 +225,84 @@ class VaultClient:
     
     def validate_api_key(self, api_key: str, environment: str = 'dev') -> bool:
         """
-        Проверка валидности API ключа
+        Validate API key
         
         Args:
-            api_key: API ключ для проверки
-            environment: Окружение (dev/prod)
+            api_key: API key to validate
+            environment: Environment (dev/prod)
             
         Returns:
-            True если ключ валиден, False иначе
+            True if key is valid, False otherwise
         """
         stored_key = self.get_secret(f'secret/jamf-bootstrap-{environment}', 'api_secret')
         return stored_key == api_key
     
     def validate_payload_token(self, payload: dict, environment: str = 'dev') -> bool:
         """
-        Проверка токена в payload запроса
+        Validate token in request payload
         
         Args:
-            payload: Данные запроса от CRM
-            environment: Окружение (dev/prod)
+            payload: Request data from CRM
+            environment: Environment (dev/prod)
             
         Returns:
-            True если токен валиден, False иначе
+            True if token is valid, False otherwise
         """
         try:
-            # Проверяем наличие токена в payload
+            # Check if token exists in payload
             if 'token' not in payload:
-                logger.warning("Токен отсутствует в payload")
+                logger.warning("Token missing in payload")
                 return False
             
             token = payload['token']
             if not token:
-                logger.warning("Токен пустой в payload")
+                logger.warning("Token is empty in payload")
                 return False
             
-            # Получаем валидный токен из Vault
+            # Get valid token from Vault
             stored_token = self.get_secret(f'secret/jamf-bootstrap-{environment}', 'api_secret')
             if not stored_token:
-                logger.error("Токен не найден в Vault")
+                logger.error("Token not found in Vault")
                 return False
             
-            # Сравниваем токены
+            # Compare tokens
             is_valid = stored_token == token
             if not is_valid:
-                logger.warning(f"Невалидный токен в payload: {token[:10]}...")
+                logger.warning(f"Invalid token in payload: {token[:10]}...")
             
             return is_valid
             
         except Exception as e:
-            logger.error(f"Ошибка проверки токена в payload: {e}")
+            logger.error(f"Token validation in payload failed: {e}")
             return False
     
     def get_secret_with_token_validation(self, payload: dict, secret_path: str, environment: str = 'dev') -> Optional[Dict[str, Any]]:
         """
-        Получение секрета только после валидации токена в payload
+        Get secret only after payload token validation
         
         Args:
-            payload: Данные запроса от CRM
-            secret_path: Путь к секрету в Vault
-            environment: Окружение (dev/prod)
+            payload: Request data from CRM
+            secret_path: Secret path in Vault
+            environment: Environment (dev/prod)
             
         Returns:
-            Секрет из Vault или None если токен невалиден
+            Secret from Vault or None if token is invalid
         """
-        # Сначала проверяем токен в payload
+        # First validate token in payload
         if not self.validate_payload_token(payload, environment):
-            logger.error("Токен в payload невалиден, секрет не выдан")
+            logger.error("Token in payload is invalid, secret not provided")
             return None
         
-        # Если токен валиден, получаем секрет
-        logger.info(f"Токен валиден, получаем секрет: {secret_path}")
+        # If token is valid, get secret
+        logger.info(f"Token is valid, getting secret: {secret_path}")
         return self.get_secret(secret_path)
     
     def test_connection(self) -> Dict[str, Any]:
         """
-        Тестирование подключения к Vault
+        Test Vault connection
         
         Returns:
-            Словарь с результатами тестирования
+            Dictionary with test results
         """
         result = {
             'connected': False,
@@ -321,6 +321,6 @@ class VaultClient:
             
         except Exception as e:
             result['error'] = str(e)
-            logger.error(f"Ошибка подключения к Vault: {e}")
+            logger.error(f"Failed to connect to Vault: {e}")
         
         return result

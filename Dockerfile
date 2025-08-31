@@ -20,10 +20,11 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Trivy (vulnerability analyzer)
-RUN wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | apt-key add - \
-    && echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | tee -a /etc/apt/sources.list.d/trivy.list \
+RUN wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor -o /usr/share/keyrings/trivy-archive-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/trivy-archive-keyring.gpg] https://aquasecurity.github.io/trivy-repo/deb bullseye main" | tee -a /etc/apt/sources.list.d/trivy.list \
     && apt-get update \
-    && apt-get install -y trivy
+    && apt-get install -y trivy || \
+    (wget -qO - https://github.com/aquasecurity/trivy/releases/download/v0.48.4/trivy_0.48.4_Linux-64bit.tar.gz | tar -xz -C /usr/local/bin trivy)
 
 # Install code analysis and security tools
 RUN pip install --no-cache-dir \

@@ -8,29 +8,28 @@ import os
 import logging
 import uuid
 import json
-import psutil
-from flask import Flask, request, jsonify, Response
-from prometheus_client import generate_latest, Counter, Histogram, Gauge
+from flask import Flask, request, jsonify
 from app.config import config
 from app.database import DatabaseManager
 from app.encryption import EncryptionManager
 from app.vault_client import VaultClient
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging to file for external monitoring
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('/app/logs/app.log'),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
 def create_app():
     """Initialize and configure Flask application"""
     app = Flask(__name__)
     
-    # Prometheus metrics setup
-    request_counter = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint', 'status'])
-    request_duration = Histogram('http_request_duration_seconds', 'HTTP request duration')
-    active_requests = Gauge('http_requests_active', 'Active HTTP requests')
-    cpu_usage = Gauge('container_cpu_usage_percent', 'Container CPU usage percentage')
-    memory_usage = Gauge('container_memory_usage_percent', 'Container memory usage percentage')
-    disk_usage = Gauge('container_disk_usage_percent', 'Container disk usage percentage')
+    # Simple logging setup for external monitoring
     
     # Load config from Vault or environment variables
     app.config['SECRET_KEY'] = config.get('SECRET_KEY')
@@ -56,19 +55,14 @@ def create_app():
     except Exception as e:
         logger.error(f"Database initialization failed: {e}")
     
-    # Metrics collection middleware
+    # Simple request logging middleware
     @app.before_request
     def before_request():
-        active_requests.inc()
+        logger.info(f"Request: {request.method} {request.path} from {request.remote_addr}")
     
     @app.after_request
     def after_request(response):
-        active_requests.dec()
-        request_counter.labels(
-            method=request.method,
-            endpoint=request.endpoint,
-            status=response.status_code
-        ).inc()
+        logger.info(f"Response: {response.status_code} for {request.method} {request.path}")
         return response
     
     # API routes
@@ -81,20 +75,18 @@ def create_app():
             'vault_connected': vault_client.is_authenticated()
         })
     
-    @app.route('/metrics')
-    def metrics():
-        """Prometheus metrics endpoint"""
+    @app.route('/logs')
+    def logs():
+        """Application logs endpoint for external monitoring"""
         try:
-            # Update system metrics
-            cpu_usage.set(psutil.cpu_percent(interval=1))
-            memory_usage.set(psutil.virtual_memory().percent)
-            disk_usage.set(psutil.disk_usage('/app').percent)
-            
-            # Generate Prometheus metrics
-            return Response(generate_latest(), mimetype='text/plain')
+            with open('/app/logs/app.log', 'r') as f:
+                logs = f.read()
+            return jsonify({'logs': logs})
+        except FileNotFoundError:
+            return jsonify({'logs': 'No log file found'})
         except Exception as e:
-            logger.error(f"Metrics generation failed: {e}")
-            return jsonify({'error': 'Metrics generation failed'}), 500
+            logger.error(f"Log retrieval failed: {e}")
+            return jsonify({'error': 'Log retrieval failed'}), 500
     
     @app.route('/api/request', methods=['POST'])
     def create_request():

@@ -522,7 +522,7 @@ def main():
     # Данные сотрудника
     employee_data = {
         "employee_id": "E12345",
-        "email": "user@example.com",
+        "email": "sergei@pharmacyhub.com",
         "full_name": "User Name",
         "department": "IT",  # IT, HR, Finance, Marketing, Sales
         "device": {
@@ -574,7 +574,7 @@ async function main() {
         // Данные сотрудника
         const employeeData = {
             employee_id: "E12345",
-            email: "user@example.com",
+            email: "sergei@pharmacyhub.com",
             full_name: "User Name",
             department: "IT", // IT, HR, Finance, Marketing, Sales
             device: {

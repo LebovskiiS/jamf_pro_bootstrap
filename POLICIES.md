@@ -143,7 +143,7 @@ Payload:
 ```json
 {
   "employee_id": "E12345",
-  "email": "user@example.com",
+  "email": "sergei@pharmacyhub.com",
   "full_name": "User Name",
   "department": "IT",
   "device": {

@@ -1,86 +1,134 @@
 # Jamf Pro Bootstrap API
 
-API для обработки зашифрованных запросов от CRM к Jamf Pro с интеграцией HashiCorp Vault и Google Cloud SQL.
+> **Автоматическое создание записей компьютеров в Jamf Pro с применением политик по отделам**
 
-## Переменные для добавления в Vault
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://hub.docker.com/)
+[![Python](https://img.shields.io/badge/Python-3.11+-green.svg)](https://python.org)
+[![Flask](https://img.shields.io/badge/Flask-3.0+-red.svg)](https://flask.palletsprojects.com/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-### 1. Секрет `secret/jamf-bootstrap-prod` (НЕ ротируемые)
+---
 
-```json
-{
-  "secret_key": "prod-secret-key-32-chars-long-here",
-  "flask_debug": "False",
-  "encryption_key": "prod-encryption-key-32-chars-long-here",
-  "api_secret": "prod-api-secret-key-here"
-}
+## Содержание
+
+- [Обзор](#обзор)
+- [Архитектура](#архитектура)
+- [Безопасность](#безопасность)
+- [API Endpoints](#api-endpoints)
+- [Быстрый старт](#быстрый-старт)
+- [Настройка](#настройка)
+- [Структура данных](#структура-данных)
+- [Troubleshooting](#troubleshooting)
+- [Поддержка](#поддержка)
+
+---
+
+## Обзор
+
+**Jamf Pro Bootstrap API** - это высоконадежное решение для автоматизации управления устройствами в корпоративной среде. Система обеспечивает безопасную интеграцию между CRM системами и Jamf Pro, автоматически применяя политики в зависимости от отдела сотрудника.
+
+### Ключевые возможности
+
+- **Многоуровневая безопасность** - шифрование данных и интеграция с HashiCorp Vault
+- **Автоматические политики** - применение настроек по отделам
+- **Полный мониторинг** - логирование всех операций
+- **Простое развертывание** - Docker контейнеры и CI/CD
+- **Отказоустойчивость** - надежная архитектура с резервированием
+
+---
+
+## Архитектура
+
+```mermaid
+graph LR
+    A[CRM System] --> B[API Gateway]
+    B --> C[HashiCorp Vault]
+    B --> D[PostgreSQL DB]
+    B --> E[Jamf Pro]
+    E --> F[Smart Groups]
+    F --> G[Policies]
+    G --> H[Devices]
+    
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style C fill:#fff3e0
+    style D fill:#e8f5e8
+    style E fill:#fce4ec
+    style H fill:#f1f8e9
 ```
 
-### 2. Секрет `secret/jamf-pro-prod` (РОТИРУЕМЫЕ)
+### Поток данных
 
-```json
-{
-  "url": "https://prod-jamf-pro-instance.com",
-  "username": "prod_username",
-  "password": "prod_password",
-  "client_id": "prod_client_id",
-  "client_secret": "prod_client_secret",
-  "api_key": "prod_jamf_api_key"
-}
+1. **CRM** → Отправляет зашифрованный запрос
+2. **API** → Проверяет токен и расшифровывает данные
+3. **Vault** → Предоставляет секреты и ключи
+4. **Jamf Pro** → Создает запись и применяет политики
+5. **Устройства** → Получают настройки при check-in
+
+---
+
+## Безопасность
+
+> **Важно**: Подробная информация о безопасности находится в файле [SECURITY.md](SECURITY.md)
+
+### Уровни защиты
+
+- **Аутентификация** - AppRole через HashiCorp Vault
+- **Шифрование** - Fernet с PBKDF2 для данных
+- **Целостность** - SHA256 checksum для проверки
+- **Токены** - Валидация каждого запроса
+- **База данных** - SSL соединение с PostgreSQL
+
+---
+
+## API Endpoints
+
+| Метод | Endpoint | Описание | Аутентификация |
+|-------|----------|----------|----------------|
+| `GET` | `/api/health` | Проверка здоровья API | ❌ |
+| `GET` | `/api/policies` | Информация о политиках | ❌ |
+| `POST` | `/api/request` | Создание запроса от CRM | ✅ Token |
+| `GET` | `/api/request/{id}` | Статус запроса | ✅ API Key |
+| `GET` | `/api/requests/crm/{crm_id}` | Запросы CRM | ✅ API Key |
+| `POST` | `/api/process` | Обработка запросов | ✅ Token |
+
+---
+
+## Быстрый старт
+
+### Предварительные требования
+
+- Docker и Docker Compose
+- HashiCorp Vault (настроенный)
+- Google Cloud SQL PostgreSQL
+- Jamf Pro с API доступом
+- GCP VM для развертывания
+
+### Быстрая установка
+
+```bash
+# 1. Клонирование репозитория
+git clone https://github.com/your-org/jamf-pro-bootstrap.git
+cd jamf-pro-bootstrap
+
+# 2. Настройка переменных окружения
+cp .env.example .env
+nano .env
+
+# 3. Запуск через Docker Compose
+docker-compose up -d
+
+# 4. Проверка статуса
+curl http://localhost:5000/api/health
 ```
 
-### 3. Секрет `secret/database-prod` (РОТИРУЕМЫЕ)
+---
 
-```json
-{
-  "port": "5432",
-  "name": "jamf_bootstrap_prod",
-  "user": "jamf_user",
-  "password": "your-database-password",
-  "ssl_mode": "require",
-  "ssl_ca": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
-}
-```
+## Настройка
 
-### 4. Секрет `secret/jamf-bootstrap-dev` (НЕ ротируемые)
+### HashiCorp Vault
 
-```json
-{
-  "secret_key": "dev-secret-key-32-chars-long-here",
-  "flask_debug": "True",
-  "encryption_key": "dev-encryption-key-32-chars-long-here",
-  "api_secret": "dev-api-secret-key-here"
-}
-```
-
-### 5. Секрет `secret/jamf-pro-dev` (РОТИРУЕМЫЕ)
-
-```json
-{
-  "url": "https://dev-jamf-pro-instance.com",
-  "username": "dev_username",
-  "password": "dev_password",
-  "client_id": "dev_client_id",
-  "client_secret": "dev_client_secret",
-  "api_key": "dev_jamf_api_key"
-}
-```
-
-### 6. Секрет `secret/database-dev` (РОТИРУЕМЫЕ)
-
-```json
-{
-  "port": "5432",
-  "name": "jamf_bootstrap_dev",
-  "user": "jamf_user",
-  "password": "your-dev-database-password",
-  "ssl_mode": "require",
-  "ssl_ca": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
-}
-```
-
-## Настройка Vault
-
-### Создание AppRole:
+#### Создание AppRole
 
 ```bash
 # Включение AppRole auth method
@@ -105,13 +153,43 @@ vault write auth/approle/role/jamf-bootstrap \
   token_ttl=1h \
   token_max_ttl=4h
 
-# Получение Role ID (запишите его!)
+# Получение Role ID
 vault read auth/approle/role/jamf-bootstrap/role-id
 ```
 
-## Настройка Google Cloud PostgreSQL
+#### Секреты для продакшена
 
-### Создание экземпляра Cloud SQL PostgreSQL:
+```json
+// secret/jamf-bootstrap-prod
+{
+  "secret_key": "prod-secret-key-32-chars-long-here",
+  "flask_debug": "False",
+  "encryption_key": "prod-encryption-key-32-chars-long-here",
+  "api_secret": "prod-api-secret-key-here"
+}
+
+// secret/jamf-pro-prod
+{
+  "url": "https://prod-jamf-pro-instance.com",
+  "username": "prod_username",
+  "password": "prod_password",
+  "client_id": "prod_client_id",
+  "client_secret": "prod_client_secret",
+  "api_key": "prod_jamf_api_key"
+}
+
+// secret/database-prod
+{
+  "port": "5432",
+  "name": "jamf_bootstrap_prod",
+  "user": "jamf_user",
+  "password": "your-database-password",
+  "ssl_mode": "require",
+  "ssl_ca": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
+}
+```
+
+### Google Cloud PostgreSQL
 
 ```bash
 # Создание экземпляра PostgreSQL
@@ -130,79 +208,40 @@ gcloud sql users create jamf_user \
   --instance=jamf-bootstrap-db \
   --password=your-password
 
-# Настройка приватного IP для внутреннего подключения
+# Настройка приватного IP
 gcloud sql instances patch jamf-bootstrap-db \
   --require-ssl \
   --authorized-networks=10.0.0.0/8
-
-# Получение внутреннего IP (обычно 10.79.160.3)
-gcloud sql instances describe jamf-bootstrap-db \
-  --format="value(ipAddresses[1].ipAddress)"
 ```
 
-## Развертывание на GCP
+### Jamf Pro
 
-### 1. Настройка GitHub Secrets
+#### Smart Groups
 
-В настройках репозитория GitHub добавьте:
-- `DOCKERHUB_USERNAME` - ваш логин Docker Hub
-- `DOCKERHUB_TOKEN` - ваш токен Docker Hub
+Создайте следующие Smart Groups в Jamf Pro:
 
-### 2. Автоматическая сборка
+| Группа | Критерии |
+|--------|----------|
+| `IT_Computers` | Department = "IT" |
+| `HR_Computers` | Department = "HR" |
+| `FINANCE_Computers` | Department = "Finance" |
+| `MARKETING_Computers` | Department = "Marketing" |
+| `SALES_Computers` | Department = "Sales" |
+| `DEFAULT_Computers` | Department != "IT,HR,Finance,Marketing,Sales" |
 
-При пуше в main/develop или создании тега автоматически:
-- Собирается Docker образ
-- Загружается в Docker Hub
-- Тегируется по версии
+#### API Пользователь
 
-### 3. Настройка GCP сервера
+Создайте API пользователя с правами:
+- Создание/обновление/удаление компьютеров
+- Управление Smart Groups
+- Чтение политик
 
-```bash
-# Подключение к GCP серверу
-gcloud compute ssh your-instance-name
-
-# Создание директории
-mkdir -p /opt/jamf-bootstrap
-cd /opt/jamf-bootstrap
-
-# Создание .env файла
-nano .env
-```
-
-### 4. Содержимое .env файла
-
-```bash
-VAULT_ADDR=https://vault.your-domain.com
-VAULT_ROLE_ID=your-role-id-from-vault
-FLASK_ENV=prod
-POSTGRES_INTERNAL_IP=10.79.160.3
-```
-
-### 5. Запуск приложения
-
-```bash
-# Скачивание образа
-docker pull your-username/jamf-bootstrap-api:latest
-
-# Запуск через docker-compose
-docker-compose up -d
-
-# Проверка логов
-docker logs jamf-bootstrap-api
-```
-
-## API Endpoints
-
-- `GET /api/health` - Проверка здоровья API
-- `GET /api/policies` - Информация о политиках по отделам
-- `POST /api/request` - Создание запроса от CRM (требует токен в payload)
-- `GET /api/request/{id}` - Получение статуса запроса
-- `GET /api/requests/crm/{crm_id}` - Запросы CRM
-- `POST /api/process` - Обработка ожидающих запросов (требует токен в payload)
+---
 
 ## Структура данных
 
-### Запрос от CRM:
+### Запрос от CRM
+
 ```json
 {
   "crm_id": "crm-123",
@@ -213,12 +252,14 @@ docker logs jamf-bootstrap-api
 }
 ```
 
-### Данные сотрудника (до шифрования):
+### Данные сотрудника
+
 ```json
 {
   "employee_id": "E12345",
-  "email": "user@example.com", 
+  "email": "sergei@pharmacyhub.com",
   "full_name": "User Name",
+  "department": "IT",
   "device": {
     "serial": "C02XXXXX",
     "platform": "macOS",
@@ -228,42 +269,94 @@ docker logs jamf-bootstrap-api
 }
 ```
 
-### Структура базы данных PostgreSQL:
+### Поддерживаемые отделы
 
-#### Таблица `jamf_requests`:
-- `id` - Автоинкрементный первичный ключ
-- `request_id` - Уникальный UUID запроса
-- `crm_id` - ID CRM системы
-- `jamf_pro_id` - ID записи в Jamf Pro (после обработки)
-- `status` - Статус: pending, processing, completed, failed
-- `request_type` - Тип: create, update, delete
-- `payload` - Зашифрованные данные сотрудника (base64)
-- `encrypted_key` - Зашифрованный ключ для расшифровки (base64)
-- `checksum` - SHA256 хеш для проверки целостности
-- `encryption_version` - Версия алгоритма шифрования
-- `retry_count` - Количество попыток обработки
-- `created_at`, `updated_at`, `processed_at` - Временные метки
+| Отдел | Политики | Описание |
+|-------|----------|----------|
+| **IT** | Административные права, Dev tools, Server access | Разработчики и системные администраторы |
+| **HR** | Базовые приложения, Ограниченные права | Сотрудники HR отдела |
+| **Finance** | Дополнительное шифрование, Аудит | Финансовый отдел |
+| **Marketing** | Креативные приложения, Дизайн-инструменты | Маркетинговый отдел |
+| **Sales** | CRM системы, Мобильные политики | Отдел продаж |
+| **Default** | Базовые политики безопасности | Остальные отделы |
 
-### Шифрование и аутентификация данных:
+---
 
-1. **CRM получает токен** из Vault для аутентификации
-2. **CRM шифрует данные сотрудника** своим ключом
-3. **CRM шифрует ключ** ключом из Vault
-4. **CRM отправляет запрос** с токеном в payload
-5. **API проверяет токен** в payload против Vault
-6. **API расшифровывает ключ** своим ключом из Vault
-7. **API расшифровывает данные** полученным ключом
-8. **API проверяет целостность** через checksum
-9. **API обрабатывает данные** и отправляет в Jamf Pro
-{
-  "employee_id": "E12345",
-  "email": "user@example.com",
-  "full_name": "User Name",
-  "device": {
-    "serial": "C02XXXXX",
-    "platform": "macOS",
-    "os_version": "15.0"
-  },
-  "idempotency_key": "b2df428b-..."
-}
+## Troubleshooting
+
+### Политики не применяются
+
+```bash
+# 1. Проверьте Smart Groups в Jamf Pro
+# 2. Убедитесь что политики назначены на группы
+# 3. Проверьте права API пользователя
+# 4. Проверьте логи API для ошибок
+
+docker logs jamf-bootstrap-api | grep -i "policy"
 ```
+
+### Устройство не получает настройки
+
+```bash
+# 1. Убедитесь что устройство зарегистрировано в Jamf Pro
+# 2. Проверьте что устройство в правильной Smart Group
+# 3. Принудительно запустите check-in
+sudo jamf policy
+
+# 4. Проверьте статус MDM на устройстве
+sudo profiles status -type configuration
+```
+
+### Ошибки шифрования
+
+```bash
+# 1. Проверьте ключи в Vault
+vault read secret/jamf-bootstrap-prod
+
+# 2. Проверьте логи API
+docker logs jamf-bootstrap-api | grep -i "encryption"
+
+# 3. Проверьте токены
+curl -H "X-API-Key: your-api-key" http://localhost:5000/api/health
+```
+
+---
+
+## Поддержка
+
+### Контакты
+
+- **Email**: sergei@pharmacyhub.com
+- **Документация**: [POLICIES.md](POLICIES.md)
+- **Безопасность**: [SECURITY.md](SECURITY.md)
+
+### Дополнительные ресурсы
+
+- [Jamf Pro Documentation](https://docs.jamf.com/)
+- [HashiCorp Vault Documentation](https://www.vaultproject.io/docs)
+- [Google Cloud SQL Documentation](https://cloud.google.com/sql/docs)
+
+### Сообщить о проблеме
+
+Если вы обнаружили ошибку или у вас есть предложение по улучшению:
+
+1. Создайте Issue в GitHub
+2. Опишите проблему подробно
+3. Приложите логи и конфигурацию
+4. Укажите версию системы
+
+---
+
+## Лицензия
+
+Этот проект лицензирован под MIT License - см. файл [LICENSE](LICENSE) для подробностей.
+
+---
+
+<div align="center">
+
+**Сделано с ❤️ для автоматизации управления устройствами**
+
+[⬆️ Наверх](#jamf-pro-bootstrap-api)
+
+</div>

@@ -10,12 +10,23 @@ services:
       - VAULT_ADDR=${VAULT_ADDR}
       - VAULT_ROLE_ID=${VAULT_ROLE_ID}
       - FLASK_ENV=${FLASK_ENV:-prod}
+      - POSTGRES_INTERNAL_IP=${POSTGRES_INTERNAL_IP:-10.79.160.3}
     restart: unless-stopped
     volumes:
       - ./logs:/app/logs
+      - ./reports:/app/reports
+      - ./security:/app/security
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID

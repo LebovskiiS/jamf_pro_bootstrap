@@ -1,0 +1,6 @@
+[bandit]
+exclude_dirs = tests,venv,.venv,__pycache__
+skips = B101,B601
+targets = app/
+output_format = json
+output_file = /app/reports/bandit-report.json

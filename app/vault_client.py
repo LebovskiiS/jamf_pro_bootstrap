@@ -19,7 +19,7 @@ class VaultClient:
         
         Args:
             vault_url: URL сервера Vault (по умолчанию из VAULT_ADDR)
-            auth_method: Метод аутентификации (token, approle, kubernetes, gcp)
+            auth_method: Метод аутентификации (token, approle, gcp)
         """
         self.vault_url = vault_url or os.getenv('VAULT_ADDR')
         self.auth_method = auth_method
@@ -37,8 +37,6 @@ class VaultClient:
                 self._authenticate_with_token()
             elif self.auth_method == 'approle':
                 self._authenticate_with_approle()
-            elif self.auth_method == 'kubernetes':
-                self._authenticate_with_kubernetes()
             elif self.auth_method == 'gcp':
                 self._authenticate_with_gcp()
             else:
@@ -74,23 +72,7 @@ class VaultClient:
         else:
             raise ValueError("Не удалось получить токен через AppRole")
     
-    def _authenticate_with_kubernetes(self):
-        """Аутентификация с помощью Kubernetes"""
-        role = os.getenv('VAULT_K8S_ROLE')
-        jwt = os.getenv('VAULT_K8S_JWT')
-        
-        if not role or not jwt:
-            raise ValueError("Kubernetes аутентификация не настроена")
-        
-        response = self.client.auth.kubernetes.login(
-            role=role,
-            jwt=jwt
-        )
-        
-        if response and 'auth' in response:
-            self.client.token = response['auth']['client_token']
-        else:
-            raise ValueError("Не удалось получить токен через Kubernetes")
+
     
     def _authenticate_with_gcp(self):
         """Аутентификация с помощью GCP IAM"""
@@ -191,27 +173,37 @@ class VaultClient:
                 'API_SECRET': app_secret.get('api_secret', '')
             })
         
-        # Получаем настройки базы данных
+        # Получаем настройки базы данных PostgreSQL
         db_secret = self.get_secret(f'secret/database-{environment}')
         if db_secret:
+            # Используем внутренний IP для подключения к PostgreSQL
+            db_host = os.getenv('POSTGRES_INTERNAL_IP', '10.79.160.3')
+            
             config.update({
-                'DATABASE_HOST': db_secret.get('host', ''),
-                'DATABASE_PORT': db_secret.get('port', '3306'),
+                'DATABASE_HOST': db_host,
+                'DATABASE_PORT': db_secret.get('port', '5432'),
                 'DATABASE_NAME': db_secret.get('name', ''),
                 'DATABASE_USER': db_secret.get('user', ''),
                 'DATABASE_PASSWORD': db_secret.get('password', ''),
+                'DATABASE_SSL_MODE': db_secret.get('ssl_mode', 'require'),
                 'DATABASE_SSL_CA': db_secret.get('ssl_ca', ''),
                 'DATABASE_SSL_CERT': db_secret.get('ssl_cert', ''),
                 'DATABASE_SSL_KEY': db_secret.get('ssl_key', '')
             })
             
-            # Формируем полный URL подключения к базе данных
-            if all([db_secret.get('host'), db_secret.get('user'), db_secret.get('password'), db_secret.get('name')]):
+            # Формируем полный URL подключения к PostgreSQL
+            if all([db_secret.get('user'), db_secret.get('password'), db_secret.get('name')]):
                 ssl_params = ""
+                if db_secret.get('ssl_mode'):
+                    ssl_params = f"?sslmode={db_secret.get('ssl_mode')}"
                 if db_secret.get('ssl_ca'):
-                    ssl_params = "?ssl_ca=" + db_secret.get('ssl_ca')
+                    ssl_params += f"&sslrootcert={db_secret.get('ssl_ca')}"
+                if db_secret.get('ssl_cert'):
+                    ssl_params += f"&sslcert={db_secret.get('ssl_cert')}"
+                if db_secret.get('ssl_key'):
+                    ssl_params += f"&sslkey={db_secret.get('ssl_key')}"
                 
-                database_url = f"mysql+pymysql://{db_secret.get('user')}:{db_secret.get('password')}@{db_secret.get('host')}:{db_secret.get('port', '3306')}/{db_secret.get('name')}{ssl_params}"
+                database_url = f"postgresql://{db_secret.get('user')}:{db_secret.get('password')}@{db_host}:{db_secret.get('port', '5432')}/{db_secret.get('name')}{ssl_params}"
                 config['DATABASE_URL'] = database_url
         
         return config
@@ -244,6 +236,66 @@ class VaultClient:
         """
         stored_key = self.get_secret(f'secret/jamf-bootstrap-{environment}', 'api_secret')
         return stored_key == api_key
+    
+    def validate_payload_token(self, payload: dict, environment: str = 'dev') -> bool:
+        """
+        Проверка токена в payload запроса
+        
+        Args:
+            payload: Данные запроса от CRM
+            environment: Окружение (dev/prod)
+            
+        Returns:
+            True если токен валиден, False иначе
+        """
+        try:
+            # Проверяем наличие токена в payload
+            if 'token' not in payload:
+                logger.warning("Токен отсутствует в payload")
+                return False
+            
+            token = payload['token']
+            if not token:
+                logger.warning("Токен пустой в payload")
+                return False
+            
+            # Получаем валидный токен из Vault
+            stored_token = self.get_secret(f'secret/jamf-bootstrap-{environment}', 'api_secret')
+            if not stored_token:
+                logger.error("Токен не найден в Vault")
+                return False
+            
+            # Сравниваем токены
+            is_valid = stored_token == token
+            if not is_valid:
+                logger.warning(f"Невалидный токен в payload: {token[:10]}...")
+            
+            return is_valid
+            
+        except Exception as e:
+            logger.error(f"Ошибка проверки токена в payload: {e}")
+            return False
+    
+    def get_secret_with_token_validation(self, payload: dict, secret_path: str, environment: str = 'dev') -> Optional[Dict[str, Any]]:
+        """
+        Получение секрета только после валидации токена в payload
+        
+        Args:
+            payload: Данные запроса от CRM
+            secret_path: Путь к секрету в Vault
+            environment: Окружение (dev/prod)
+            
+        Returns:
+            Секрет из Vault или None если токен невалиден
+        """
+        # Сначала проверяем токен в payload
+        if not self.validate_payload_token(payload, environment):
+            logger.error("Токен в payload невалиден, секрет не выдан")
+            return None
+        
+        # Если токен валиден, получаем секрет
+        logger.info(f"Токен валиден, получаем секрет: {secret_path}")
+        return self.get_secret(secret_path)
     
     def test_connection(self) -> Dict[str, Any]:
         """

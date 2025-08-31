@@ -8,7 +8,9 @@ import os
 import logging
 import uuid
 import json
-from flask import Flask, request, jsonify
+import psutil
+from flask import Flask, request, jsonify, Response
+from prometheus_client import generate_latest, Counter, Histogram, Gauge
 from app.config import config
 from app.database import DatabaseManager
 from app.encryption import EncryptionManager
@@ -21,6 +23,14 @@ logger = logging.getLogger(__name__)
 def create_app():
     """Создание и настройка Flask приложения"""
     app = Flask(__name__)
+    
+    # Инициализация метрик Prometheus
+    request_counter = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint', 'status'])
+    request_duration = Histogram('http_request_duration_seconds', 'HTTP request duration')
+    active_requests = Gauge('http_requests_active', 'Active HTTP requests')
+    cpu_usage = Gauge('container_cpu_usage_percent', 'Container CPU usage percentage')
+    memory_usage = Gauge('container_memory_usage_percent', 'Container memory usage percentage')
+    disk_usage = Gauge('container_disk_usage_percent', 'Container disk usage percentage')
     
     # Конфигурация из Vault или переменных окружения
     app.config['SECRET_KEY'] = config.get('SECRET_KEY')
@@ -46,6 +56,21 @@ def create_app():
     except Exception as e:
         logger.error(f"Ошибка инициализации базы данных: {e}")
     
+    # Middleware для сбора метрик
+    @app.before_request
+    def before_request():
+        active_requests.inc()
+    
+    @app.after_request
+    def after_request(response):
+        active_requests.dec()
+        request_counter.labels(
+            method=request.method,
+            endpoint=request.endpoint,
+            status=response.status_code
+        ).inc()
+        return response
+    
     # API маршруты
     @app.route('/api/health')
     def health_check():
@@ -56,25 +81,39 @@ def create_app():
             'vault_connected': vault_client.is_authenticated()
         })
     
+    @app.route('/metrics')
+    def metrics():
+        """Endpoint для метрик Prometheus"""
+        try:
+            # Обновление системных метрик
+            cpu_usage.set(psutil.cpu_percent(interval=1))
+            memory_usage.set(psutil.virtual_memory().percent)
+            disk_usage.set(psutil.disk_usage('/app').percent)
+            
+            # Генерация метрик Prometheus
+            return Response(generate_latest(), mimetype='text/plain')
+        except Exception as e:
+            logger.error(f"Ошибка генерации метрик: {e}")
+            return jsonify({'error': 'Metrics generation failed'}), 500
+    
     @app.route('/api/request', methods=['POST'])
     def create_request():
         """Создание нового зашифрованного запроса от CRM"""
         try:
-            # Проверяем API ключ
-            api_key = request.headers.get('X-API-Key')
-            if not api_key or not vault_client.validate_api_key(api_key, config.get('FLASK_ENV')):
-                return jsonify({'error': 'Invalid API key'}), 401
-            
             # Получаем данные запроса
             data = request.get_json()
             if not data:
                 return jsonify({'error': 'No data provided'}), 400
             
-            # Обязательные поля
-            required_fields = ['crm_id', 'request_type', 'payload', 'encrypted_key']
+            # Обязательные поля включая токен
+            required_fields = ['crm_id', 'request_type', 'payload', 'encrypted_key', 'token']
             for field in required_fields:
                 if field not in data:
                     return jsonify({'error': f'Missing required field: {field}'}), 400
+            
+            # Проверяем токен в payload
+            if not vault_client.validate_payload_token(data, config.get('FLASK_ENV')):
+                return jsonify({'error': 'Invalid token in payload'}), 401
             
             # Генерируем уникальный ID запроса
             request_id = str(uuid.uuid4())
@@ -83,13 +122,17 @@ def create_app():
             if not encryption_manager.validate_encrypted_data(data['encrypted_key']):
                 return jsonify({'error': 'Invalid encrypted key format'}), 400
             
+            # Генерируем checksum для проверки целостности
+            checksum = encryption_manager.generate_checksum(data['payload'])
+            
             # Сохраняем запрос в базу данных
             request_record = db_manager.create_request(
                 request_id=request_id,
                 crm_id=data['crm_id'],
                 request_type=data['request_type'],
                 payload=data['payload'],
-                encrypted_key=data['encrypted_key']
+                encrypted_key=data['encrypted_key'],
+                checksum=checksum
             )
             
             if not request_record:
@@ -171,10 +214,14 @@ def create_app():
     def process_pending_requests():
         """Обработка ожидающих запросов (внутренний endpoint)"""
         try:
-            # Проверяем API ключ
-            api_key = request.headers.get('X-API-Key')
-            if not api_key or not vault_client.validate_api_key(api_key, config.get('FLASK_ENV')):
-                return jsonify({'error': 'Invalid API key'}), 401
+            # Получаем данные запроса
+            data = request.get_json()
+            if not data:
+                return jsonify({'error': 'No data provided'}), 400
+            
+            # Проверяем токен в payload
+            if not vault_client.validate_payload_token(data, config.get('FLASK_ENV')):
+                return jsonify({'error': 'Invalid token in payload'}), 401
             
             # Инициализируем Jamf процессор
             from app.jamf_processor import JamfProcessor
@@ -194,8 +241,13 @@ def create_app():
                     # Обновляем статус на "обрабатывается"
                     db_manager.update_request_status(request_record.request_id, 'processing')
                     
-                    # Расшифровываем данные
-                    decrypted_payload = encryption_manager.decrypt_data(request_record.payload)
+                    # Расшифровываем данные с проверкой целостности
+                    decrypted_payload = encryption_manager.decrypt_and_verify(
+                        request_record.payload, 
+                        request_record.checksum
+                    )
+                    if not decrypted_payload:
+                        raise ValueError("Ошибка проверки целостности данных")
                     employee_data = json.loads(decrypted_payload)
                     
                     # Обрабатываем запрос в зависимости от типа

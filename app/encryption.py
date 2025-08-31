@@ -5,11 +5,12 @@ Encryption Module
 
 import os
 import base64
+import hashlib
 import logging
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from typing import Optional
+from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,80 @@ class EncryptionManager:
         except Exception as e:
             logger.error(f"Ошибка дешифрования данных: {e}")
             raise
+    
+    def generate_checksum(self, data: str) -> str:
+        """
+        Генерация SHA256 хеша для проверки целостности
+        
+        Args:
+            data: Данные для хеширования
+            
+        Returns:
+            SHA256 хеш в hex формате
+        """
+        try:
+            return hashlib.sha256(data.encode()).hexdigest()
+        except Exception as e:
+            logger.error(f"Ошибка генерации checksum: {e}")
+            raise
+    
+    def verify_checksum(self, data: str, expected_checksum: str) -> bool:
+        """
+        Проверка целостности данных
+        
+        Args:
+            data: Данные для проверки
+            expected_checksum: Ожидаемый checksum
+            
+        Returns:
+            True если checksum совпадает, False иначе
+        """
+        try:
+            actual_checksum = self.generate_checksum(data)
+            return actual_checksum == expected_checksum
+        except Exception as e:
+            logger.error(f"Ошибка проверки checksum: {e}")
+            return False
+    
+    def encrypt_with_checksum(self, data: str) -> Tuple[str, str]:
+        """
+        Шифрование данных с генерацией checksum
+        
+        Args:
+            data: Данные для шифрования
+            
+        Returns:
+            Кортеж (зашифрованные_данные, checksum)
+        """
+        try:
+            encrypted_data = self.encrypt_data(data)
+            checksum = self.generate_checksum(data)
+            return encrypted_data, checksum
+        except Exception as e:
+            logger.error(f"Ошибка шифрования с checksum: {e}")
+            raise
+    
+    def decrypt_and_verify(self, encrypted_data: str, expected_checksum: str) -> Optional[str]:
+        """
+        Дешифрование данных с проверкой целостности
+        
+        Args:
+            encrypted_data: Зашифрованные данные
+            expected_checksum: Ожидаемый checksum
+            
+        Returns:
+            Расшифрованные данные или None если проверка не прошла
+        """
+        try:
+            decrypted_data = self.decrypt_data(encrypted_data)
+            if self.verify_checksum(decrypted_data, expected_checksum):
+                return decrypted_data
+            else:
+                logger.warning("Checksum не совпадает - возможна порча данных")
+                return None
+        except Exception as e:
+            logger.error(f"Ошибка дешифрования с проверкой: {e}")
+            return None
     
     def generate_encryption_key(self) -> str:
         """

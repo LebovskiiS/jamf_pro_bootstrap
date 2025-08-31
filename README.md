@@ -32,11 +32,11 @@ API для обработки зашифрованных запросов от C
 
 ```json
 {
-  "host": "your-cloud-sql-instance-ip",
-  "port": "3306",
+  "port": "5432",
   "name": "jamf_bootstrap_prod",
   "user": "jamf_user",
   "password": "your-database-password",
+  "ssl_mode": "require",
   "ssl_ca": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
 }
 ```
@@ -69,11 +69,11 @@ API для обработки зашифрованных запросов от C
 
 ```json
 {
-  "host": "your-dev-cloud-sql-instance-ip",
-  "port": "3306",
+  "port": "5432",
   "name": "jamf_bootstrap_dev",
   "user": "jamf_user",
   "password": "your-dev-database-password",
+  "ssl_mode": "require",
   "ssl_ca": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
 }
 ```
@@ -109,14 +109,14 @@ vault write auth/approle/role/jamf-bootstrap \
 vault read auth/approle/role/jamf-bootstrap/role-id
 ```
 
-## Настройка Google Cloud SQL
+## Настройка Google Cloud PostgreSQL
 
-### Создание инстанса Cloud SQL:
+### Создание экземпляра Cloud SQL PostgreSQL:
 
 ```bash
-# Создание инстанса MySQL
+# Создание экземпляра PostgreSQL
 gcloud sql instances create jamf-bootstrap-db \
-  --database-version=MYSQL_8_0 \
+  --database-version=POSTGRES_15 \
   --tier=db-f1-micro \
   --region=us-central1 \
   --root-password=your-root-password
@@ -130,9 +130,14 @@ gcloud sql users create jamf_user \
   --instance=jamf-bootstrap-db \
   --password=your-password
 
-# Получение IP адреса
+# Настройка приватного IP для внутреннего подключения
+gcloud sql instances patch jamf-bootstrap-db \
+  --require-ssl \
+  --authorized-networks=10.0.0.0/8
+
+# Получение внутреннего IP (обычно 10.79.160.3)
 gcloud sql instances describe jamf-bootstrap-db \
-  --format="value(connectionName)"
+  --format="value(ipAddresses[1].ipAddress)"
 ```
 
 ## Развертывание на GCP
@@ -170,6 +175,7 @@ nano .env
 VAULT_ADDR=https://vault.your-domain.com
 VAULT_ROLE_ID=your-role-id-from-vault
 FLASK_ENV=prod
+POSTGRES_INTERNAL_IP=10.79.160.3
 ```
 
 ### 5. Запуск приложения
@@ -188,25 +194,66 @@ docker logs jamf-bootstrap-api
 ## API Endpoints
 
 - `GET /api/health` - Проверка здоровья API
-- `POST /api/request` - Создание запроса от CRM
+- `POST /api/request` - Создание запроса от CRM (требует токен в payload)
 - `GET /api/request/{id}` - Получение статуса запроса
 - `GET /api/requests/crm/{crm_id}` - Запросы CRM
-- `POST /api/process` - Обработка ожидающих запросов
+- `POST /api/process` - Обработка ожидающих запросов (требует токен в payload)
 
-## Структура запросов
+## Структура данных
 
 ### Запрос от CRM:
 ```json
 {
   "crm_id": "crm-123",
   "request_type": "create",
-  "payload": "encrypted-employee-data",
-  "encrypted_key": "encrypted-key-from-vault"
+  "payload": "encrypted-employee-data-base64",
+  "encrypted_key": "encrypted-key-from-vault-base64",
+  "token": "valid-token-from-vault"
 }
 ```
 
-### Данные сотрудника:
+### Данные сотрудника (до шифрования):
 ```json
+{
+  "employee_id": "E12345",
+  "email": "user@example.com", 
+  "full_name": "User Name",
+  "device": {
+    "serial": "C02XXXXX",
+    "platform": "macOS",
+    "os_version": "15.0"
+  },
+  "idempotency_key": "b2df428b-..."
+}
+```
+
+### Структура базы данных PostgreSQL:
+
+#### Таблица `jamf_requests`:
+- `id` - Автоинкрементный первичный ключ
+- `request_id` - Уникальный UUID запроса
+- `crm_id` - ID CRM системы
+- `jamf_pro_id` - ID записи в Jamf Pro (после обработки)
+- `status` - Статус: pending, processing, completed, failed
+- `request_type` - Тип: create, update, delete
+- `payload` - Зашифрованные данные сотрудника (base64)
+- `encrypted_key` - Зашифрованный ключ для расшифровки (base64)
+- `checksum` - SHA256 хеш для проверки целостности
+- `encryption_version` - Версия алгоритма шифрования
+- `retry_count` - Количество попыток обработки
+- `created_at`, `updated_at`, `processed_at` - Временные метки
+
+### Шифрование и аутентификация данных:
+
+1. **CRM получает токен** из Vault для аутентификации
+2. **CRM шифрует данные сотрудника** своим ключом
+3. **CRM шифрует ключ** ключом из Vault
+4. **CRM отправляет запрос** с токеном в payload
+5. **API проверяет токен** в payload против Vault
+6. **API расшифровывает ключ** своим ключом из Vault
+7. **API расшифровывает данные** полученным ключом
+8. **API проверяет целостность** через checksum
+9. **API обрабатывает данные** и отправляет в Jamf Pro
 {
   "employee_id": "E12345",
   "email": "user@example.com",

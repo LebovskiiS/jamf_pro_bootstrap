@@ -1,646 +1,558 @@
-# 🏢 Настройка CRM системы для интеграции с Jamf Pro Bootstrap API
+# CRM Integration Setup Guide
 
-## 📋 Обзор интеграции
+> **Complete guide for configuring CRM system integration with Jamf Pro Bootstrap API**
 
-CRM система должна:
-1. **Получать токен** из Vault для аутентификации
-2. **Шифровать данные** сотрудника
-3. **Шифровать ключ** ключом из Vault
-4. **Отправлять запрос** с токеном в payload
-5. **Обрабатывать ответ** от API
+---
 
-## 🔧 Настройка Vault для CRM
+## Table of Contents
 
-### 1. Создание секретов в Vault
+- [Overview](#overview)
+- [Prerequisites](#prerequisites)
+- [Integration Steps](#integration-steps)
+- [Request Format](#request-format)
+- [Error Handling](#error-handling)
+- [Testing](#testing)
+- [Troubleshooting](#troubleshooting)
 
-#### Секрет для CRM аутентификации:
-```bash
-# Путь: secret/crm-auth-prod
-{
-  "api_token": "crm-api-token-here",
-  "vault_url": "https://vault.your-domain.com",
-  "jamf_api_endpoint": "https://your-vm-ip:5000/api/request"
-}
-```
+---
 
-#### Секрет для шифрования:
-```bash
-# Путь: secret/crm-encryption-prod
-{
-  "encryption_key": "your-32-character-encryption-key",
-  "vault_encryption_key": "vault-encryption-key-for-key-encryption"
-}
-```
+## Overview
 
-### 2. Настройка политик Vault
+This guide explains how to configure your CRM system to integrate with the Jamf Pro Bootstrap API. The integration allows automatic creation of computer records in Jamf Pro with department-based policy application.
 
-```bash
-# Создание политики для CRM
-vault policy write crm-policy -<<EOF
-path "secret/crm-auth-*" {
-  capabilities = ["read"]
-}
-path "secret/crm-encryption-*" {
-  capabilities = ["read"]
-}
-path "secret/jamf-bootstrap-*" {
-  capabilities = ["read"]
-}
-EOF
+### Integration Flow
 
-# Создание AppRole для CRM
-vault auth enable approle
-vault write auth/approle/role/crm-role \
-  policies="crm-policy" \
-  token_ttl=1h \
-  token_max_ttl=4h
-```
+1. **Employee data** is collected in CRM
+2. **Data is encrypted** using Vault-provided keys
+3. **Request is sent** to Jamf Pro Bootstrap API
+4. **API processes** the request and creates Jamf Pro record
+5. **Policies are applied** based on employee department
+6. **Status is returned** to CRM
 
-## 🚀 Настройка CRM системы
+---
 
-### 1. Установка зависимостей
+## Prerequisites
 
-#### Python зависимости:
-```bash
-pip install requests hvac cryptography
-```
+### Required Components
 
-#### Node.js зависимости:
-```bash
-npm install axios node-vault crypto-js
-```
+- **CRM System** with API capabilities
+- **HashiCorp Vault** access for encryption keys
+- **Network access** to Jamf Pro Bootstrap API
+- **Employee data** with department information
 
-### 2. Конфигурация CRM
+### Required Permissions
 
-#### Python конфигурация:
+- **Vault access** for reading encryption keys
+- **API access** to Jamf Pro Bootstrap endpoints
+- **Network connectivity** to API server
+
+---
+
+## Integration Steps
+
+### Step 1: Configure Vault Access
+
+#### Get Encryption Keys from Vault
+
 ```python
-# config.py
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
-
-class CRMConfig:
-    # Vault настройки
-    VAULT_URL = os.getenv('VAULT_URL', 'https://vault.your-domain.com')
-    VAULT_ROLE_ID = os.getenv('VAULT_ROLE_ID')
-    VAULT_SECRET_ID = os.getenv('VAULT_SECRET_ID')
-    
-    # API настройки
-    JAMF_API_ENDPOINT = os.getenv('JAMF_API_ENDPOINT', 'https://your-vm-ip:5000/api/request')
-    
-    # Окружение
-    ENVIRONMENT = os.getenv('ENVIRONMENT', 'prod')
-```
-
-#### Node.js конфигурация:
-```javascript
-// config.js
-require('dotenv').config();
-
-const config = {
-    // Vault настройки
-    vaultUrl: process.env.VAULT_URL || 'https://vault.your-domain.com',
-    vaultRoleId: process.env.VAULT_ROLE_ID,
-    vaultSecretId: process.env.VAULT_SECRET_ID,
-    
-    // API настройки
-    jamfApiEndpoint: process.env.JAMF_API_ENDPOINT || 'https://your-vm-ip:5000/api/request',
-    
-    // Окружение
-    environment: process.env.ENVIRONMENT || 'prod'
-};
-
-module.exports = config;
-```
-
-### 3. Vault клиент для CRM
-
-#### Python Vault клиент:
-```python
-# vault_client.py
 import hvac
-import logging
-from typing import Dict, Optional
-
-logger = logging.getLogger(__name__)
-
-class CRMVaultClient:
-    def __init__(self, vault_url: str, role_id: str, secret_id: str):
-        self.vault_url = vault_url
-        self.role_id = role_id
-        self.secret_id = secret_id
-        self.client = hvac.Client(url=vault_url)
-        self._authenticate()
-    
-    def _authenticate(self):
-        """Аутентификация в Vault через AppRole"""
-        try:
-            response = self.client.auth.approle.login(
-                role_id=self.role_id,
-                secret_id=self.secret_id
-            )
-            
-            if response and 'auth' in response:
-                self.client.token = response['auth']['client_token']
-                logger.info("Успешная аутентификация в Vault")
-            else:
-                raise ValueError("Не удалось получить токен через AppRole")
-                
-        except Exception as e:
-            logger.error(f"Ошибка аутентификации в Vault: {e}")
-            raise
-    
-    def get_secret(self, path: str) -> Optional[Dict]:
-        """Получение секрета из Vault"""
-        try:
-            response = self.client.secrets.kv.v2.read_secret_version(path=path)
-            if response and 'data' in response and 'data' in response['data']:
-                return response['data']['data']
-            return None
-        except Exception as e:
-            logger.error(f"Ошибка получения секрета {path}: {e}")
-            return None
-    
-    def get_api_token(self, environment: str = 'prod') -> Optional[str]:
-        """Получение API токена для Jamf API"""
-        secret = self.get_secret(f'crm-auth-{environment}')
-        return secret.get('api_token') if secret else None
-    
-    def get_encryption_keys(self, environment: str = 'prod') -> Optional[Dict]:
-        """Получение ключей шифрования"""
-        return self.get_secret(f'crm-encryption-{environment}')
-```
-
-#### Node.js Vault клиент:
-```javascript
-// vaultClient.js
-const vault = require('node-vault');
-const logger = require('./logger');
-
-class CRMVaultClient {
-    constructor(vaultUrl, roleId, secretId) {
-        this.vaultUrl = vaultUrl;
-        this.roleId = roleId;
-        this.secretId = secretId;
-        this.client = vault({ apiVersion: 'v1', endpoint: vaultUrl });
-        this.authenticate();
-    }
-    
-    async authenticate() {
-        try {
-            const result = await this.client.approleLogin({
-                role_id: this.roleId,
-                secret_id: this.secretId
-            });
-            
-            this.client.token = result.auth.client_token;
-            logger.info('Успешная аутентификация в Vault');
-        } catch (error) {
-            logger.error(`Ошибка аутентификации в Vault: ${error.message}`);
-            throw error;
-        }
-    }
-    
-    async getSecret(path) {
-        try {
-            const result = await this.client.read(`secret/data/${path}`);
-            return result.data.data;
-        } catch (error) {
-            logger.error(`Ошибка получения секрета ${path}: ${error.message}`);
-            return null;
-        }
-    }
-    
-    async getApiToken(environment = 'prod') {
-        const secret = await this.getSecret(`crm-auth-${environment}`);
-        return secret ? secret.api_token : null;
-    }
-    
-    async getEncryptionKeys(environment = 'prod') {
-        return await this.getSecret(`crm-encryption-${environment}`);
-    }
-}
-
-module.exports = CRMVaultClient;
-```
-
-### 4. Менеджер шифрования
-
-#### Python менеджер шифрования:
-```python
-# encryption_manager.py
 import base64
-import hashlib
 import json
+
+# Connect to Vault
+vault_client = hvac.Client(
+    url='https://your-vault-server.com',
+    token='your-vault-token'
+)
+
+# Get encryption key for your environment
+secret = vault_client.secrets.kv.v2.read_secret_version(
+    path='jamf-bootstrap-prod',
+    mount_point='secret'
+)
+
+encryption_key = secret['data']['data']['encryption_key']
+api_token = secret['data']['data']['api_secret']
+```
+
+#### Store Keys Securely
+
+```python
+# Store keys in secure environment variables
+import os
+
+os.environ['JAMF_ENCRYPTION_KEY'] = encryption_key
+os.environ['JAMF_API_TOKEN'] = api_token
+os.environ['JAMF_API_URL'] = 'https://your-api-server.com'
+```
+
+### Step 2: Implement Encryption
+
+#### Install Required Libraries
+
+```bash
+pip install cryptography requests
+```
+
+#### Create Encryption Function
+
+```python
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+import base64
+import hashlib
+import json
 
-class CRMEncryptionManager:
-    def __init__(self, encryption_key: str):
-        self.encryption_key = encryption_key.encode()
-        self.fernet = self._create_fernet()
+def encrypt_employee_data(employee_data, encryption_key):
+    """
+    Encrypt employee data using Fernet encryption
     
-    def _create_fernet(self) -> Fernet:
-        """Создание Fernet объекта для шифрования"""
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=b'jamf_bootstrap_salt',
-            iterations=100000,
-        )
-        key = base64.urlsafe_b64encode(kdf.derive(self.encryption_key))
-        return Fernet(key)
+    Args:
+        employee_data (dict): Employee information
+        encryption_key (str): Encryption key from Vault
+        
+    Returns:
+        tuple: (encrypted_data, encrypted_key, checksum)
+    """
+    # Convert data to JSON string
+    json_data = json.dumps(employee_data, sort_keys=True)
     
-    def encrypt_data(self, data: str) -> str:
-        """Шифрование данных"""
-        encrypted_data = self.fernet.encrypt(data.encode())
-        return base64.urlsafe_b64encode(encrypted_data).decode()
+    # Generate key using PBKDF2
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b'jamf_bootstrap_salt',
+        iterations=100000,
+    )
+    key = base64.urlsafe_b64encode(kdf.derive(encryption_key.encode()))
     
-    def encrypt_key_with_vault_key(self, key: str, vault_key: str) -> str:
-        """Шифрование ключа ключом из Vault"""
-        vault_fernet = Fernet(base64.urlsafe_b64encode(vault_key.encode()))
-        encrypted_key = vault_fernet.encrypt(key.encode())
-        return base64.urlsafe_b64encode(encrypted_key).decode()
+    # Encrypt data
+    fernet = Fernet(key)
+    encrypted_data = fernet.encrypt(json_data.encode())
     
-    def generate_checksum(self, data: str) -> str:
-        """Генерация SHA256 хеша"""
-        return hashlib.sha256(data.encode()).hexdigest()
+    # Generate checksum
+    checksum = hashlib.sha256(json_data.encode()).hexdigest()
+    
+    # Encrypt the key with Vault key
+    vault_fernet = Fernet(encryption_key.encode())
+    encrypted_key = vault_fernet.encrypt(key)
+    
+    return (
+        base64.b64encode(encrypted_data).decode(),
+        base64.b64encode(encrypted_key).decode(),
+        checksum
+    )
 ```
 
-#### Node.js менеджер шифрования:
-```javascript
-// encryptionManager.js
-const crypto = require('crypto');
-const CryptoJS = require('crypto-js');
+### Step 3: Create API Request Function
 
-class CRMEncryptionManager {
-    constructor(encryptionKey) {
-        this.encryptionKey = encryptionKey;
-    }
-    
-    encryptData(data) {
-        const cipher = crypto.createCipher('aes-256-cbc', this.encryptionKey);
-        let encrypted = cipher.update(data, 'utf8', 'base64');
-        encrypted += cipher.final('base64');
-        return encrypted;
-    }
-    
-    encryptKeyWithVaultKey(key, vaultKey) {
-        const cipher = crypto.createCipher('aes-256-cbc', vaultKey);
-        let encrypted = cipher.update(key, 'utf8', 'base64');
-        encrypted += cipher.final('base64');
-        return encrypted;
-    }
-    
-    generateChecksum(data) {
-        return crypto.createHash('sha256').update(data).digest('hex');
-    }
-}
+#### Implement Request Sending
 
-module.exports = CRMEncryptionManager;
-```
-
-### 5. Jamf API клиент
-
-#### Python Jamf API клиент:
 ```python
-# jamf_api_client.py
 import requests
 import json
-import logging
-from typing import Dict, Optional
 
-logger = logging.getLogger(__name__)
-
-class JamfAPIClient:
-    def __init__(self, api_endpoint: str, vault_client, encryption_manager):
-        self.api_endpoint = api_endpoint
-        self.vault_client = vault_client
-        self.encryption_manager = encryption_manager
+def send_jamf_request(employee_data, crm_id, request_type='create'):
+    """
+    Send encrypted request to Jamf Pro Bootstrap API
     
-    def create_employee_request(self, employee_data: Dict, environment: str = 'prod') -> Optional[Dict]:
-        """Создание запроса для сотрудника"""
-        try:
-            # Получаем токен из Vault
-            api_token = self.vault_client.get_api_token(environment)
-            if not api_token:
-                raise ValueError("Не удалось получить API токен из Vault")
-            
-            # Получаем ключи шифрования
-            encryption_keys = self.vault_client.get_encryption_keys(environment)
-            if not encryption_keys:
-                raise ValueError("Не удалось получить ключи шифрования из Vault")
-            
-            # Подготавливаем данные
-            employee_json = json.dumps(employee_data)
-            
-            # Шифруем данные сотрудника
-            encrypted_payload = self.encryption_manager.encrypt_data(employee_json)
-            
-            # Шифруем ключ ключом из Vault
-            encrypted_key = self.encryption_manager.encrypt_key_with_vault_key(
-                encryption_keys['encryption_key'],
-                encryption_keys['vault_encryption_key']
-            )
-            
-            # Генерируем checksum
-            checksum = self.encryption_manager.generate_checksum(employee_json)
-            
-            # Формируем запрос
-            request_data = {
-                'crm_id': f"crm-{employee_data.get('employee_id', 'unknown')}",
-                'request_type': 'create',
-                'payload': encrypted_payload,
-                'encrypted_key': encrypted_key,
-                'token': api_token
-            }
-            
-            # Отправляем запрос
-            response = requests.post(
-                self.api_endpoint,
-                json=request_data,
-                headers={'Content-Type': 'application/json'},
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                logger.info(f"Запрос создан для сотрудника {employee_data.get('employee_id')}")
-                return response.json()
-            else:
-                logger.error(f"Ошибка создания запроса: {response.status_code} - {response.text}")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Ошибка создания запроса для сотрудника: {e}")
-            return None
+    Args:
+        employee_data (dict): Employee and device information
+        crm_id (str): CRM system identifier
+        request_type (str): Request type (create, update, delete)
+        
+    Returns:
+        dict: API response
+    """
+    # Get encryption key from environment
+    encryption_key = os.environ['JAMF_ENCRYPTION_KEY']
+    api_token = os.environ['JAMF_API_TOKEN']
+    api_url = os.environ['JAMF_API_URL']
     
-    def get_request_status(self, request_id: str, environment: str = 'prod') -> Optional[Dict]:
-        """Получение статуса запроса"""
-        try:
-            api_token = self.vault_client.get_api_token(environment)
-            if not api_token:
-                raise ValueError("Не удалось получить API токен из Vault")
-            
-            response = requests.get(
-                f"{self.api_endpoint}/{request_id}",
-                headers={'Authorization': f'Bearer {api_token}'},
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                return response.json()
-            else:
-                logger.error(f"Ошибка получения статуса: {response.status_code}")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Ошибка получения статуса запроса: {e}")
-            return None
+    # Encrypt employee data
+    encrypted_data, encrypted_key_b64, checksum = encrypt_employee_data(
+        employee_data, encryption_key
+    )
+    
+    # Prepare request payload
+    request_payload = {
+        'crm_id': crm_id,
+        'request_type': request_type,
+        'payload': encrypted_data,
+        'encrypted_key': encrypted_key_b64,
+        'token': api_token,
+        'checksum': checksum
+    }
+    
+    # Send request to API
+    try:
+        response = requests.post(
+            f'{api_url}/api/request',
+            json=request_payload,
+            headers={'Content-Type': 'application/json'},
+            timeout=30
+        )
+        
+        response.raise_for_status()
+        return response.json()
+        
+    except requests.exceptions.RequestException as e:
+        return {
+            'success': False,
+            'error': f'Request failed: {str(e)}'
+        }
 ```
 
-#### Node.js Jamf API клиент:
-```javascript
-// jamfApiClient.js
-const axios = require('axios');
-const logger = require('./logger');
+### Step 4: Implement Employee Data Collection
 
-class JamfAPIClient {
-    constructor(apiEndpoint, vaultClient, encryptionManager) {
-        this.apiEndpoint = apiEndpoint;
-        this.vaultClient = vaultClient;
-        this.encryptionManager = encryptionManager;
-    }
-    
-    async createEmployeeRequest(employeeData, environment = 'prod') {
-        try {
-            // Получаем токен из Vault
-            const apiToken = await this.vaultClient.getApiToken(environment);
-            if (!apiToken) {
-                throw new Error('Не удалось получить API токен из Vault');
-            }
-            
-            // Получаем ключи шифрования
-            const encryptionKeys = await this.vaultClient.getEncryptionKeys(environment);
-            if (!encryptionKeys) {
-                throw new Error('Не удалось получить ключи шифрования из Vault');
-            }
-            
-            // Подготавливаем данные
-            const employeeJson = JSON.stringify(employeeData);
-            
-            // Шифруем данные сотрудника
-            const encryptedPayload = this.encryptionManager.encryptData(employeeJson);
-            
-            // Шифруем ключ ключом из Vault
-            const encryptedKey = this.encryptionManager.encryptKeyWithVaultKey(
-                encryptionKeys.encryption_key,
-                encryptionKeys.vault_encryption_key
-            );
-            
-            // Генерируем checksum
-            const checksum = this.encryptionManager.generateChecksum(employeeJson);
-            
-            // Формируем запрос
-            const requestData = {
-                crm_id: `crm-${employeeData.employee_id || 'unknown'}`,
-                request_type: 'create',
-                payload: encryptedPayload,
-                encrypted_key: encryptedKey,
-                token: apiToken
-            };
-            
-            // Отправляем запрос
-            const response = await axios.post(this.apiEndpoint, requestData, {
-                headers: { 'Content-Type': 'application/json' },
-                timeout: 30000
-            });
-            
-            logger.info(`Запрос создан для сотрудника ${employeeData.employee_id}`);
-            return response.data;
-            
-        } catch (error) {
-            logger.error(`Ошибка создания запроса для сотрудника: ${error.message}`);
-            return null;
-        }
-    }
-    
-    async getRequestStatus(requestId, environment = 'prod') {
-        try {
-            const apiToken = await this.vaultClient.getApiToken(environment);
-            if (!apiToken) {
-                throw new Error('Не удалось получить API токен из Vault');
-            }
-            
-            const response = await axios.get(`${this.apiEndpoint}/${requestId}`, {
-                headers: { 'Authorization': `Bearer ${apiToken}` },
-                timeout: 30000
-            });
-            
-            return response.data;
-            
-        } catch (error) {
-            logger.error(`Ошибка получения статуса запроса: ${error.message}`);
-            return null;
-        }
-    }
-}
+#### Collect Required Information
 
-module.exports = JamfAPIClient;
-```
-
-### 6. Пример использования
-
-#### Python пример:
 ```python
-# main.py
-from config import CRMConfig
-from vault_client import CRMVaultClient
-from encryption_manager import CRMEncryptionManager
-from jamf_api_client import JamfAPIClient
-
-def main():
-    # Инициализация компонентов
-    config = CRMConfig()
+def collect_employee_data(employee_id, email, full_name, department, device_info):
+    """
+    Collect and validate employee data
     
-    vault_client = CRMVaultClient(
-        config.VAULT_URL,
-        config.VAULT_ROLE_ID,
-        config.VAULT_SECRET_ID
-    )
+    Args:
+        employee_id (str): Employee identifier
+        email (str): Employee email address
+        full_name (str): Employee full name
+        department (str): Employee department
+        device_info (dict): Device information
+        
+    Returns:
+        dict: Validated employee data
+    """
+    # Validate required fields
+    if not all([employee_id, email, full_name, department]):
+        raise ValueError("Missing required employee information")
     
-    encryption_keys = vault_client.get_encryption_keys(config.ENVIRONMENT)
-    encryption_manager = CRMEncryptionManager(encryption_keys['encryption_key'])
+    # Validate department
+    valid_departments = ['IT', 'HR', 'Finance', 'Marketing', 'Sales']
+    if department not in valid_departments:
+        department = 'Default'  # Fallback to default
     
-    jamf_client = JamfAPIClient(
-        config.JAMF_API_ENDPOINT,
-        vault_client,
-        encryption_manager
-    )
+    # Validate device information
+    if not device_info.get('serial'):
+        raise ValueError("Device serial number is required")
     
-    # Данные сотрудника
-    employee_data = {
-        "employee_id": "E12345",
-        "email": "sergei@pharmacyhub.com",
-        "full_name": "User Name",
-        "department": "IT",  # IT, HR, Finance, Marketing, Sales
-        "device": {
-            "serial": "C02XXXXX",
-            "platform": "macOS",
-            "os_version": "15.0"
+    # Generate idempotency key
+    import uuid
+    idempotency_key = str(uuid.uuid4())
+    
+    return {
+        'employee_id': employee_id,
+        'email': email,
+        'full_name': full_name,
+        'department': department,
+        'device': {
+            'serial': device_info['serial'],
+            'platform': device_info.get('platform', 'macOS'),
+            'os_version': device_info.get('os_version', '15.0')
         },
-        "idempotency_key": "b2df428b-..."
+        'idempotency_key': idempotency_key
     }
-    
-    # Создание запроса
-    result = jamf_client.create_employee_request(employee_data, config.ENVIRONMENT)
-    
-    if result:
-        print(f"Запрос создан: {result}")
-    else:
-        print("Ошибка создания запроса")
-
-if __name__ == "__main__":
-    main()
 ```
 
-#### Node.js пример:
-```javascript
-// main.js
-const config = require('./config');
-const CRMVaultClient = require('./vaultClient');
-const CRMEncryptionManager = require('./encryptionManager');
-const JamfAPIClient = require('./jamfApiClient');
+---
 
-async function main() {
-    try {
-        // Инициализация компонентов
-        const vaultClient = new CRMVaultClient(
-            config.vaultUrl,
-            config.vaultRoleId,
-            config.vaultSecretId
-        );
-        
-        const encryptionKeys = await vaultClient.getEncryptionKeys(config.environment);
-        const encryptionManager = new CRMEncryptionManager(encryptionKeys.encryption_key);
-        
-        const jamfClient = new JamfAPIClient(
-            config.jamfApiEndpoint,
-            vaultClient,
-            encryptionManager
-        );
-        
-        // Данные сотрудника
-        const employeeData = {
-            employee_id: "E12345",
-            email: "sergei@pharmacyhub.com",
-            full_name: "User Name",
-            department: "IT", // IT, HR, Finance, Marketing, Sales
-            device: {
-                serial: "C02XXXXX",
-                platform: "macOS",
-                os_version: "15.0"
-            },
-            idempotency_key: "b2df428b-..."
-        };
-        
-        // Создание запроса
-        const result = await jamfClient.createEmployeeRequest(employeeData, config.environment);
-        
-        if (result) {
-            console.log(`Запрос создан: ${JSON.stringify(result)}`);
-        } else {
-            console.log("Ошибка создания запроса");
-        }
-        
-    } catch (error) {
-        console.error(`Ошибка: ${error.message}`);
-    }
+## Request Format
+
+### Employee Data Structure
+
+```json
+{
+  "employee_id": "E12345",
+  "email": "sergei@pharmacyhub.com",
+  "full_name": "User Name",
+  "department": "IT",
+  "device": {
+    "serial": "C02XXXXX",
+    "platform": "macOS",
+    "os_version": "15.0"
+  },
+  "idempotency_key": "b2df428b-..."
 }
-
-main();
 ```
 
-### 7. Переменные окружения
+### API Request Structure
 
-#### .env файл для CRM:
+```json
+{
+  "crm_id": "crm-123",
+  "request_type": "create",
+  "payload": "encrypted-employee-data-base64",
+  "encrypted_key": "encrypted-key-from-vault-base64",
+  "token": "valid-token-from-vault",
+  "checksum": "sha256-checksum"
+}
+```
+
+### Supported Departments
+
+| Department | Smart Group | Policies Applied |
+|------------|-------------|------------------|
+| **IT** | IT_Computers | Admin rights, Dev tools, Server access |
+| **HR** | HR_Computers | Basic apps, Limited rights |
+| **Finance** | FINANCE_Computers | Additional encryption, Audit |
+| **Marketing** | MARKETING_Computers | Creative apps, Design tools |
+| **Sales** | SALES_Computers | CRM systems, Mobile policies |
+| **Default** | DEFAULT_Computers | Basic security policies |
+
+---
+
+## Error Handling
+
+### Common Error Scenarios
+
+#### Encryption Errors
+
+```python
+def handle_encryption_error(error):
+    """Handle encryption-related errors"""
+    if "Invalid key" in str(error):
+        # Refresh encryption key from Vault
+        refresh_vault_keys()
+        return "Encryption key refreshed, retry request"
+    elif "Invalid token" in str(error):
+        # Refresh API token
+        refresh_api_token()
+        return "API token refreshed, retry request"
+    else:
+        return f"Encryption error: {str(error)}"
+```
+
+#### API Errors
+
+```python
+def handle_api_error(response):
+    """Handle API response errors"""
+    if response.status_code == 401:
+        return "Authentication failed - check API token"
+    elif response.status_code == 400:
+        return f"Bad request: {response.json().get('error', 'Unknown error')}"
+    elif response.status_code == 500:
+        return "Internal server error - contact administrator"
+    else:
+        return f"API error {response.status_code}: {response.text}"
+```
+
+### Retry Logic
+
+```python
+import time
+from functools import wraps
+
+def retry_on_failure(max_retries=3, delay=1):
+    """Retry decorator for failed requests"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_retries):
+                try:
+                    result = func(*args, **kwargs)
+                    if result.get('success'):
+                        return result
+                    
+                    # Check if retry is appropriate
+                    error = result.get('error', '')
+                    if 'authentication' in error.lower() or 'token' in error.lower():
+                        # Refresh credentials and retry
+                        refresh_credentials()
+                        time.sleep(delay)
+                        continue
+                    
+                    return result
+                    
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        return {'success': False, 'error': str(e)}
+                    time.sleep(delay)
+            
+            return {'success': False, 'error': 'Max retries exceeded'}
+        return wrapper
+    return decorator
+```
+
+---
+
+## Testing
+
+### Test Environment Setup
+
+#### Create Test Data
+
+```python
+def create_test_employee():
+    """Create test employee data"""
+    return {
+        'employee_id': 'TEST-001',
+        'email': 'test@example.com',
+        'full_name': 'Test User',
+        'department': 'IT',
+        'device': {
+            'serial': 'TEST-SERIAL-001',
+            'platform': 'macOS',
+            'os_version': '15.0'
+        }
+    }
+```
+
+#### Test Request Flow
+
+```python
+def test_integration():
+    """Test complete integration flow"""
+    # Create test employee
+    employee_data = create_test_employee()
+    
+    # Send request
+    result = send_jamf_request(employee_data, 'test-crm-001')
+    
+    # Check result
+    if result.get('success'):
+        print(f"✅ Test successful: {result.get('message')}")
+        return True
+    else:
+        print(f"❌ Test failed: {result.get('error')}")
+        return False
+```
+
+### Validation Tests
+
+#### Test Encryption
+
+```python
+def test_encryption():
+    """Test encryption/decryption functionality"""
+    test_data = {'test': 'data'}
+    encryption_key = os.environ['JAMF_ENCRYPTION_KEY']
+    
+    # Encrypt
+    encrypted_data, encrypted_key_b64, checksum = encrypt_employee_data(
+        test_data, encryption_key
+    )
+    
+    # Verify checksum
+    json_data = json.dumps(test_data, sort_keys=True)
+    expected_checksum = hashlib.sha256(json_data.encode()).hexdigest()
+    
+    assert checksum == expected_checksum, "Checksum verification failed"
+    print("✅ Encryption test passed")
+```
+
+#### Test API Connectivity
+
+```python
+def test_api_connectivity():
+    """Test API connectivity"""
+    api_url = os.environ['JAMF_API_URL']
+    
+    try:
+        response = requests.get(f'{api_url}/api/health', timeout=10)
+        if response.status_code == 200:
+            print("✅ API connectivity test passed")
+            return True
+        else:
+            print(f"❌ API health check failed: {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"❌ API connectivity test failed: {str(e)}")
+        return False
+```
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+#### Vault Connection Issues
+
 ```bash
-# Vault настройки
-VAULT_URL=https://vault.your-domain.com
-VAULT_ROLE_ID=your-role-id
-VAULT_SECRET_ID=your-secret-id
+# Check Vault connectivity
+curl -H "X-Vault-Token: your-token" https://your-vault-server.com/v1/sys/health
 
-# API настройки
-JAMF_API_ENDPOINT=https://your-vm-ip:5000/api/request
-
-# Окружение
-ENVIRONMENT=prod
+# Verify token permissions
+vault token lookup
 ```
 
-## 🔒 Безопасность
+#### API Connection Issues
 
-### Рекомендации:
-- ✅ **Ротация токенов** каждые 24 часа
-- ✅ **Логирование** всех операций
-- ✅ **Валидация данных** перед отправкой
-- ✅ **Обработка ошибок** и retry логика
-- ✅ **SSL/TLS** для всех соединений
-- ✅ **Ограничение доступа** к Vault
+```bash
+# Check API health
+curl https://your-api-server.com/api/health
 
-### Мониторинг:
-- 📊 **Метрики запросов** к API
-- 📊 **Время ответа** Vault
-- 📊 **Количество ошибок** шифрования
-- 📊 **Статус запросов** в Jamf Pro
+# Check network connectivity
+ping your-api-server.com
+telnet your-api-server.com 443
+```
 
-## 🚀 Развертывание
+#### Encryption Issues
 
-### 1. Установка зависимостей
-### 2. Настройка переменных окружения
-### 3. Тестирование подключения к Vault
-### 4. Тестирование шифрования данных
-### 5. Тестирование отправки запросов
-### 6. Мониторинг и логирование
+```python
+# Verify encryption key format
+def verify_encryption_key(key):
+    """Verify encryption key is valid"""
+    try:
+        # Key should be 32 bytes when decoded
+        decoded_key = base64.b64decode(key)
+        assert len(decoded_key) == 32, "Key must be 32 bytes"
+        return True
+    except Exception as e:
+        print(f"Invalid encryption key: {e}")
+        return False
+```
 
-**CRM система готова к интеграции с Jamf Pro Bootstrap API!** 🎯
+### Debug Mode
+
+#### Enable Debug Logging
+
+```python
+import logging
+
+# Configure debug logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# Log all requests
+def debug_request(request_data):
+    """Log request data for debugging"""
+    logging.debug(f"Request data: {json.dumps(request_data, indent=2)}")
+```
+
+#### Debug Response
+
+```python
+def debug_response(response):
+    """Log response data for debugging"""
+    logging.debug(f"Response status: {response.status_code}")
+    logging.debug(f"Response headers: {dict(response.headers)}")
+    logging.debug(f"Response body: {response.text}")
+```
+
+---
+
+## Support
+
+### Contact Information
+
+- **Email**: sergei@pharmacyhub.com
+- **Documentation**: [README.md](README.md)
+- **Security**: [SECURITY.md](SECURITY.md)
+
+### Additional Resources
+
+- [Jamf Pro Documentation](https://docs.jamf.com/)
+- [HashiCorp Vault Documentation](https://www.vaultproject.io/docs)
+- [Python Cryptography Documentation](https://cryptography.io/)
+
+---
+
+<div align="center">
+
+**Integration Guide - Last updated: January 2024**
+
+</div>

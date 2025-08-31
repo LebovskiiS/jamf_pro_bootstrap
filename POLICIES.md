@@ -1,221 +1,770 @@
-# Jamf Pro Policies Configuration
+# Jamf Pro Policy Management
 
-## Как работают политики в Jamf Pro
+> **Complete guide to department-based policy application in Jamf Pro**
 
-### 1. Источники политик
-- **Jamf Pro интерфейс** - где вы создаете политики
-- **Smart Groups** - группы устройств по условиям  
-- **Configuration Profiles** - профили настроек
-- **Policies** - политики с действиями
+---
 
-### 2. Логика применения
-1. **Вы создаете политики** в Jamf Pro интерфейсе
-2. **API получает список** существующих политик
-3. **API добавляет компьютер** в соответствующую Smart Group
-4. **Jamf Pro автоматически применяет** политики к группе
-5. **Устройства получают** настройки при следующем check-in
+## Table of Contents
 
-### 3. Кто отправляет настройки
-- **Jamf Pro** отправляет настройки на устройства
-- **Наш API** только добавляет машины в группы
-- **Устройства** сами подключаются к Jamf Pro и получают политики
+- [Overview](#overview)
+- [How Policies Work](#how-policies-work)
+- [Department Configuration](#department-configuration)
+- [Smart Groups Setup](#smart-groups-setup)
+- [API Integration](#api-integration)
+- [Policy Examples](#policy-examples)
+- [Troubleshooting](#troubleshooting)
 
-## Структура политик по отделам
+---
 
-### IT отдел
-**Smart Group:** `IT_Computers`
-**Политики:**
-- `IT_Admin_Rights` - Административные права
-- `IT_Developer_Tools` - Xcode, VS Code, Git
-- `IT_Server_Access` - VPN, SSH ключи
-- `IT_Advanced_Security` - Расширенные настройки безопасности
+## Overview
 
-### HR отдел  
-**Smart Group:** `HR_Computers`
-**Политики:**
-- `HR_Basic_Apps` - Office, браузеры
-- `HR_Limited_Rights` - Ограниченные права пользователя
-- `HR_Privacy_Policy` - Политики конфиденциальности
-- `HR_Systems_Access` - Доступ к HR системам
+The Jamf Pro Bootstrap API automatically applies department-specific policies to computers by adding them to Smart Groups. This system ensures that each employee receives the appropriate software, settings, and permissions based on their department.
 
-### Finance отдел
-**Smart Group:** `FINANCE_Computers`
-**Политики:**
-- `Finance_Encryption` - Дополнительное шифрование
-- `Finance_Audit` - Аудит доступа
-- `Finance_Restricted_Install` - Ограничения на установку ПО
-- `Finance_Systems_Access` - Доступ к финансовым системам
+### Policy Application Flow
 
-### Marketing отдел
-**Smart Group:** `MARKETING_Computers`
-**Политики:**
-- `Marketing_Creative_Apps` - Photoshop, Figma, Sketch
-- `Marketing_Social_Media` - Социальные сети
-- `Marketing_Design_Tools` - Дизайн-инструменты
+1. **CRM sends employee data** with department information
+2. **API creates computer record** in Jamf Pro
+3. **API adds computer to department Smart Group**
+4. **Jamf Pro applies policies** to the Smart Group
+5. **Device receives policies** on next check-in
 
-### Sales отдел
-**Smart Group:** `SALES_Computers`
-**Политики:**
-- `Sales_CRM_Access` - CRM системы
-- `Sales_Mobile_Policy` - Мобильные политики
-- `Sales_Customer_Tools` - Инструменты для работы с клиентами
+---
 
-### Default (все остальные)
-**Smart Group:** `DEFAULT_Computers`
-**Политики:**
-- `Default_Basic_Security` - Базовые политики безопасности
-- `Default_Office_Apps` - Стандартные приложения
-- `Default_Standard_Rights` - Стандартные права
+## How Policies Work
 
-## Настройка в Jamf Pro
+### Smart Groups and Policies
 
-### 1. Создание Smart Groups
+In Jamf Pro, policies are applied to computers through Smart Groups. The API uses this mechanism to automatically assign policies based on employee department.
 
-Перейдите в **Jamf Pro Console > Computer Management > Smart Computer Groups**
+#### Smart Group Structure
 
-#### IT_Computers
 ```
-Criteria:
-- Department is "IT"
-- OR Employee ID starts with "IT-"
+Department Smart Group → Policy Assignment → Computer Membership
 ```
 
-#### HR_Computers  
+#### Policy Application Process
+
+1. **Computer Creation**: API creates computer record in Jamf Pro
+2. **Group Assignment**: API adds computer to department-specific Smart Group
+3. **Policy Trigger**: Jamf Pro detects new computer in Smart Group
+4. **Policy Execution**: Jamf Pro applies assigned policies to computer
+5. **Device Update**: Computer receives policies on next check-in
+
+### Department Mapping
+
+| Department | Smart Group | Description |
+|------------|-------------|-------------|
+| **IT** | `IT_Computers` | Developers and system administrators |
+| **HR** | `HR_Computers` | HR department employees |
+| **Finance** | `FINANCE_Computers` | Finance department |
+| **Marketing** | `MARKETING_Computers` | Marketing department |
+| **Sales** | `SALES_Computers` | Sales department |
+| **Default** | `DEFAULT_Computers` | Other departments |
+
+---
+
+## Department Configuration
+
+### IT Department
+
+#### Smart Group: `IT_Computers`
+- **Criteria**: Department = "IT"
+- **Scope**: All IT department computers
+
+#### Applied Policies
+
+| Policy Name | Description | Purpose |
+|-------------|-------------|---------|
+| **IT_Admin_Rights** | Administrative privileges | Grant sudo access and admin rights |
+| **IT_Developer_Tools** | Development software | Install Xcode, VS Code, Git, etc. |
+| **IT_Server_Access** | Server access tools | VPN, SSH keys, server management |
+| **IT_Advanced_Security** | Enhanced security | Advanced security settings and monitoring |
+
+#### Policy Configuration Example
+
+```xml
+<!-- IT_Admin_Rights Policy -->
+<policy>
+    <general>
+        <name>IT_Admin_Rights</name>
+        <enabled>true</enabled>
+        <trigger>EVENT</trigger>
+        <trigger_events>
+            <trigger_event>Smart Group Membership</trigger_event>
+        </trigger_events>
+    </general>
+    <scope>
+        <computer_groups>
+            <computer_group>
+                <name>IT_Computers</name>
+            </computer_group>
+        </computer_groups>
+    </scope>
+    <maintenance>
+        <update_inventory>true</update_inventory>
+        <reset_name>false</reset_name>
+        <install_all_cached_packages>false</install_all_cached_packages>
+    </maintenance>
+</policy>
 ```
-Criteria:
-- Department is "HR"
-- OR Employee ID starts with "HR-"
+
+### HR Department
+
+#### Smart Group: `HR_Computers`
+- **Criteria**: Department = "HR"
+- **Scope**: All HR department computers
+
+#### Applied Policies
+
+| Policy Name | Description | Purpose |
+|-------------|-------------|---------|
+| **HR_Basic_Apps** | Basic applications | Office, browsers, standard software |
+| **HR_Limited_Rights** | Limited user privileges | Standard user accounts, no admin access |
+| **HR_Privacy_Policy** | Privacy settings | Enhanced privacy and data protection |
+| **HR_Systems_Access** | HR systems access | Access to HR-specific applications |
+
+### Finance Department
+
+#### Smart Group: `FINANCE_Computers`
+- **Criteria**: Department = "Finance"
+- **Scope**: All Finance department computers
+
+#### Applied Policies
+
+| Policy Name | Description | Purpose |
+|-------------|-------------|---------|
+| **Finance_Encryption** | Additional encryption | Enhanced disk encryption and security |
+| **Finance_Audit** | Access auditing | Comprehensive audit logging |
+| **Finance_Restricted_Install** | Software restrictions | Prevent unauthorized software installation |
+| **Finance_Systems_Access** | Financial systems | Access to financial applications |
+
+### Marketing Department
+
+#### Smart Group: `MARKETING_Computers`
+- **Criteria**: Department = "Marketing"
+- **Scope**: All Marketing department computers
+
+#### Applied Policies
+
+| Policy Name | Description | Purpose |
+|-------------|-------------|---------|
+| **Marketing_Creative_Apps** | Creative software | Photoshop, Figma, Sketch, etc. |
+| **Marketing_Social_Media** | Social media tools | Social media management applications |
+| **Marketing_Design_Tools** | Design applications | Design and creative software |
+
+### Sales Department
+
+#### Smart Group: `SALES_Computers`
+- **Criteria**: Department = "Sales"
+- **Scope**: All Sales department computers
+
+#### Applied Policies
+
+| Policy Name | Description | Purpose |
+|-------------|-------------|---------|
+| **Sales_CRM_Access** | CRM systems | Access to CRM and sales applications |
+| **Sales_Mobile_Policy** | Mobile device policies | Mobile device management settings |
+| **Sales_Customer_Tools** | Customer management | Customer relationship tools |
+
+### Default Department
+
+#### Smart Group: `DEFAULT_Computers`
+- **Criteria**: Department != "IT,HR,Finance,Marketing,Sales"
+- **Scope**: All other department computers
+
+#### Applied Policies
+
+| Policy Name | Description | Purpose |
+|-------------|-------------|---------|
+| **Default_Basic_Security** | Basic security policies | Standard security settings |
+| **Default_Office_Apps** | Standard applications | Office and basic productivity software |
+| **Default_Standard_Rights** | Standard user rights | Standard user privileges |
+
+---
+
+## Smart Groups Setup
+
+### Creating Smart Groups in Jamf Pro
+
+#### IT_Computers Smart Group
+
+```xml
+<computer_group>
+    <name>IT_Computers</name>
+    <is_smart>true</is_smart>
+    <site>
+        <id>-1</id>
+        <name>None</name>
+    </site>
+    <criteria>
+        <size>1</size>
+        <criterion>
+            <name>Department</name>
+            <priority>0</priority>
+            <and_or>and</and_or>
+            <search_type>is</search_type>
+            <value>IT</value>
+            <opening_paren>false</opening_paren>
+            <closing_paren>false</closing_paren>
+        </criterion>
+    </criteria>
+</computer_group>
 ```
 
-#### FINANCE_Computers
+#### HR_Computers Smart Group
+
+```xml
+<computer_group>
+    <name>HR_Computers</name>
+    <is_smart>true</is_smart>
+    <site>
+        <id>-1</id>
+        <name>None</name>
+    </site>
+    <criteria>
+        <size>1</size>
+        <criterion>
+            <name>Department</name>
+            <priority>0</priority>
+            <and_or>and</and_or>
+            <search_type>is</search_type>
+            <value>HR</value>
+            <opening_paren>false</opening_paren>
+            <closing_paren>false</closing_paren>
+        </criterion>
+    </criteria>
+</computer_group>
 ```
-Criteria:
-- Department is "Finance"
-- OR Employee ID starts with "FIN-"
+
+### Smart Group Criteria
+
+#### Department Field Mapping
+
+The API uses the `Department` field in computer records to determine Smart Group membership. This field is set when the computer record is created.
+
+#### Criteria Examples
+
+```xml
+<!-- Finance Department -->
+<criterion>
+    <name>Department</name>
+    <search_type>is</search_type>
+    <value>Finance</value>
+</criterion>
+
+<!-- Marketing Department -->
+<criterion>
+    <name>Department</name>
+    <search_type>is</search_type>
+    <value>Marketing</value>
+</criterion>
+
+<!-- Sales Department -->
+<criterion>
+    <name>Department</name>
+    <search_type>is</search_type>
+    <value>Sales</value>
+</criterion>
+
+<!-- Default (not IT, HR, Finance, Marketing, or Sales) -->
+<criterion>
+    <name>Department</name>
+    <search_type>is not</search_type>
+    <value>IT</value>
+</criterion>
 ```
 
-### 2. Создание политик
-
-Перейдите в **Jamf Pro Console > Computer Management > Policies**
-
-#### Пример: IT_Admin_Rights
-```
-General:
-- Name: IT_Admin_Rights
-- Trigger: Recurring Check-in
-- Execution Frequency: Once per computer
-
-Scope:
-- Target Computers: IT_Computers (Smart Group)
-
-Payload:
-- Accounts: Add user to admin group
-- Scripts: Install development tools
-```
-
-#### Пример: HR_Basic_Apps
-```
-General:
-- Name: HR_Basic_Apps
-- Trigger: Recurring Check-in
-- Execution Frequency: Once per computer
-
-Scope:
-- Target Computers: HR_Computers (Smart Group)
-
-Payload:
-- Packages: Microsoft Office, Chrome
-- Configuration Profiles: Basic security settings
-```
+---
 
 ## API Integration
 
-### Как API работает с политиками
+### Policy Application Process
 
-1. **CRM отправляет данные** с полем `department`
-2. **API создает запись** в Jamf Pro
-3. **API добавляет компьютер** в соответствующую Smart Group (`{DEPARTMENT}_Computers`)
-4. **Jamf Pro автоматически** применяет политики к группе
-5. **Устройство получает** политики при следующем check-in
+#### 1. Computer Creation
 
-### Пример запроса от CRM
-
-```json
-{
-  "employee_id": "E12345",
-  "email": "sergei@pharmacyhub.com",
-  "full_name": "User Name",
-  "department": "IT",
-  "device": {
-    "serial": "C02XXXXX",
-    "platform": "macOS",
-    "os_version": "15.0"
-  }
-}
+```python
+def create_computer_with_policies(employee_data):
+    """Create computer record and apply policies"""
+    
+    # Create computer record in Jamf Pro
+    computer_result = create_computer_record(employee_data)
+    if not computer_result.get('success'):
+        return computer_result
+    
+    jamf_pro_id = computer_result.get('jamf_pro_id')
+    department = employee_data.get('department', 'Default')
+    
+    # Apply department-specific policies
+    policy_result = apply_policies_by_department(jamf_pro_id, department)
+    
+    return {
+        'success': True,
+        'jamf_pro_id': jamf_pro_id,
+        'department': department,
+        'policies_applied': policy_result.get('applied_policies', []),
+        'message': f'Computer created and policies applied for {department}'
+    }
 ```
 
-### Результат обработки
+#### 2. Smart Group Assignment
 
+```python
+def add_computer_to_group(computer_id, group_name):
+    """Add computer to department Smart Group"""
+    
+    # Find group by name
+    groups = get_smart_groups()
+    group_id = None
+    
+    for group in groups.get('computer_groups', []):
+        if group.get('name') == group_name:
+            group_id = group.get('id')
+            break
+    
+    if not group_id:
+        return {
+            'success': False,
+            'error': f'Group "{group_name}" not found'
+        }
+    
+    # Add computer to group
+    group_data = {
+        "computer_additions": [{"id": computer_id}]
+    }
+    
+    result = make_request('PUT', f'/computergroups/id/{group_id}', group_data)
+    
+    if result:
+        return {
+            'success': True,
+            'group_id': group_id,
+            'message': f'Computer added to group {group_name}'
+        }
+    else:
+        return {
+            'success': False,
+            'error': 'Failed to add computer to group'
+        }
+```
+
+#### 3. Department Policy Mapping
+
+```python
+def apply_policies_by_department(computer_id, department):
+    """Apply department-specific policies"""
+    
+    # Department to Smart Group mapping
+    department_groups = {
+        'IT': 'IT_Computers',
+        'HR': 'HR_Computers',
+        'Finance': 'FINANCE_Computers',
+        'Marketing': 'MARKETING_Computers',
+        'Sales': 'SALES_Computers',
+        'Default': 'DEFAULT_Computers'
+    }
+    
+    # Get Smart Group for department
+    group_name = department_groups.get(department, 'DEFAULT_Computers')
+    
+    # Add computer to Smart Group
+    result = add_computer_to_group(computer_id, group_name)
+    
+    if result.get('success'):
+        return {
+            'success': True,
+            'applied_policies': [f'{department} policies'],
+            'department': department,
+            'smart_group': group_name,
+            'message': f'Applied {department} policies'
+        }
+    else:
+        return {
+            'success': False,
+            'error': result.get('error', 'Unknown error')
+        }
+```
+
+### API Endpoints
+
+#### Get Policy Information
+
+```http
+GET /api/policies
+```
+
+**Response:**
 ```json
 {
-  "success": true,
-  "jamf_pro_id": 1234,
-  "department": "IT",
-  "policies_applied": [
-    "it_admin_rights",
-    "it_developer_tools", 
-    "it_server_access"
+  "departments": {
+    "IT": {
+      "smart_group": "IT_Computers",
+      "policies": [
+        "IT_Admin_Rights - Administrative privileges",
+        "IT_Developer_Tools - Xcode, VS Code, Git",
+        "IT_Server_Access - VPN, SSH keys",
+        "IT_Advanced_Security - Enhanced security settings"
+      ]
+    },
+    "HR": {
+      "smart_group": "HR_Computers",
+      "policies": [
+        "HR_Basic_Apps - Office, browsers",
+        "HR_Limited_Rights - Limited user privileges",
+        "HR_Privacy_Policy - Privacy settings",
+        "HR_Systems_Access - HR systems access"
+      ]
+    }
+  },
+  "how_it_works": [
+    "1. CRM sends employee data with department field",
+    "2. API creates computer record in Jamf Pro",
+    "3. API adds computer to department Smart Group",
+    "4. Jamf Pro automatically applies policies to group",
+    "5. Device receives policies on next check-in"
   ],
-  "message": "Computer created and 3 policies applied for IT department"
+  "supported_departments": ["IT", "HR", "Finance", "Marketing", "Sales"],
+  "default_fallback": "Default policies applied if department not recognized"
 }
 ```
 
-## Мониторинг политик
+---
 
-### Проверка применения политик
+## Policy Examples
 
-1. **Jamf Pro Console** > Computer Management > Computers
-2. Найдите компьютер по serial number
-3. Перейдите на вкладку **Management**
-4. Проверьте **Smart Computer Groups** и **Policies**
+### IT Department Policy Example
 
-### Логи API
+#### IT_Admin_Rights Policy
 
-API логирует применение политик:
-
+```xml
+<policy>
+    <general>
+        <name>IT_Admin_Rights</name>
+        <enabled>true</enabled>
+        <trigger>EVENT</trigger>
+        <trigger_events>
+            <trigger_event>Smart Group Membership</trigger_event>
+        </trigger_events>
+        <frequency>Once per computer</frequency>
+        <retry_event>none</retry_event>
+        <retry_attempts>-1</retry_attempts>
+        <notify_on_each_failed_retry>false</notify_on_each_failed_retry>
+        <location_user_only>false</location_user_only>
+        <target_drive>/</target_drive>
+        <offline>false</offline>
+    </general>
+    <scope>
+        <computer_groups>
+            <computer_group>
+                <name>IT_Computers</name>
+            </computer_group>
+        </computer_groups>
+    </scope>
+    <self_service>
+        <use_for_self_service>false</use_for_self_service>
+        <self_service_display_name></self_service_display_name>
+        <install_button_text>Install</install_button_text>
+        <reinstall_button_text>Reinstall</reinstall_button_text>
+        <self_service_description></self_service_description>
+        <force_users_to_view_description>false</force_users_to_view_description>
+        <self_service_icon>
+            <id>0</id>
+            <filename></filename>
+            <uri></uri>
+        </self_service_icon>
+        <feature_on_main_page>false</feature_on_main_page>
+        <self_service_categories>
+            <category>
+                <name>None</name>
+            </category>
+        </self_service_categories>
+    </self_service>
+    <package_configuration>
+        <packages>
+            <size>0</size>
+        </packages>
+    </package_configuration>
+    <scripts>
+        <size>1</size>
+        <script>
+            <id>1</id>
+            <name>Grant Admin Rights</name>
+            <priority>After</priority>
+            <parameter4></parameter4>
+            <parameter5></parameter5>
+            <parameter6></parameter6>
+            <parameter7></parameter7>
+            <parameter8></parameter8>
+            <parameter9></parameter9>
+            <parameter10></parameter10>
+            <parameter11></parameter11>
+        </script>
+    </scripts>
+    <printers>
+        <size>0</size>
+    </printers>
+    <dock_items>
+        <size>0</size>
+    </dock_items>
+    <account_maintenance>
+        <accounts>
+            <size>0</size>
+        </accounts>
+        <directory_bindings>
+            <size>0</size>
+        </directory_bindings>
+        <management_account>
+            <action>do_not_change</action>
+            <managed_password></managed_password>
+            <managed_password_length>8</managed_password_length>
+        </management_account>
+        <open_firmware_efi_password>
+            <of_mode>none</of_mode>
+            <of_password_sha256></of_password_sha256>
+        </open_firmware_efi_password>
+    </account_maintenance>
+    <maintenance>
+        <update_inventory>true</update_inventory>
+        <reset_name>false</reset_name>
+        <install_all_cached_packages>false</install_all_cached_packages>
+        <heal>false</heal>
+        <prebindings>false</prebindings>
+        <permissions>false</permissions>
+        <byhost>false</byhost>
+        <system_cache>false</system_cache>
+        <user_cache>false</user_cache>
+        <verify>false</verify>
+    </maintenance>
+    <files_processes>
+        <search_by_path></search_by_path>
+        <delete_file>false</delete_file>
+        <locate_file></locate_file>
+        <update_locate_database>false</update_locate_database>
+        <spotlight_search></spotlight_search>
+        <search_for_process></search_for_process>
+        <kill_process>false</kill_process>
+        <run_command></run_command>
+    </files_processes>
+    <user_interaction>
+        <message_start></message_start>
+        <allow_users_to_defer>false</allow_users_to_defer>
+        <allow_deferral_until_utc></allow_deferral_until_utc>
+        <message_finish></message_finish>
+    </user_interaction>
+</policy>
 ```
-INFO - Applied policy 'it_admin_rights' to computer 1234
-INFO - Request abc-123 processed - Applied 3 policies for IT department
+
+### HR Department Policy Example
+
+#### HR_Basic_Apps Policy
+
+```xml
+<policy>
+    <general>
+        <name>HR_Basic_Apps</name>
+        <enabled>true</enabled>
+        <trigger>EVENT</trigger>
+        <trigger_events>
+            <trigger_event>Smart Group Membership</trigger_event>
+        </trigger_events>
+        <frequency>Once per computer</frequency>
+    </general>
+    <scope>
+        <computer_groups>
+            <computer_group>
+                <name>HR_Computers</name>
+            </computer_group>
+        </computer_groups>
+    </scope>
+    <package_configuration>
+        <packages>
+            <size>3</size>
+            <package>
+                <id>1</id>
+                <name>Microsoft Office</name>
+                <action>Install</action>
+                <fut></fut>
+                <feu>false</feu>
+            </package>
+            <package>
+                <id>2</id>
+                <name>Google Chrome</name>
+                <action>Install</action>
+                <fut></fut>
+                <feu>false</feu>
+            </package>
+            <package>
+                <id>3</id>
+                <name>Slack</name>
+                <action>Install</action>
+                <fut></fut>
+                <feu>false</feu>
+            </package>
+        </packages>
+    </package_configuration>
+    <maintenance>
+        <update_inventory>true</update_inventory>
+    </maintenance>
+</policy>
 ```
+
+---
 
 ## Troubleshooting
 
-### Политики не применяются
+### Common Issues
 
-1. **Проверьте Smart Groups** - компьютер должен быть в группе
-2. **Проверьте Scope политик** - группа должна быть в scope
-3. **Проверьте Triggers** - политика должна иметь правильный trigger
-4. **Принудительный check-in** - `sudo jamf policy`
+#### Policies Not Applied
 
-### API не может добавить в группу
+**Symptoms:**
+- Computer appears in Smart Group but policies don't execute
+- No policy logs in Jamf Pro
+- Device doesn't receive expected software
 
-1. **Проверьте права API пользователя** в Jamf Pro
-2. **Проверьте название группы** - должно быть `{DEPARTMENT}_Computers`
-3. **Проверьте логи API** для ошибок
+**Solutions:**
 
-## Рекомендации
+1. **Check Smart Group Criteria**
+   ```bash
+   # Verify computer is in correct Smart Group
+   # Check Department field value matches criteria
+   ```
 
-### Безопасность
-- Используйте минимальные права для API пользователя
-- Регулярно аудируйте применяемые политики
-- Тестируйте политики на тестовых машинах
+2. **Verify Policy Assignment**
+   ```bash
+   # Ensure policies are assigned to Smart Group
+   # Check policy scope includes Smart Group
+   ```
 
-### Производительность  
-- Не создавайте слишком много политик
-- Используйте Recurring Check-in вместо Login/Logout
-- Группируйте похожие настройки в одну политику
+3. **Check Policy Triggers**
+   ```bash
+   # Verify policy trigger is set to "Smart Group Membership"
+   # Check policy frequency settings
+   ```
 
-### Мониторинг
-- Настройте уведомления о неудачных политиках
-- Регулярно проверяйте статус Smart Groups
-- Мониторьте логи API для ошибок применения политик
+4. **Force Policy Execution**
+   ```bash
+   # On device, run:
+   sudo jamf policy
+   
+   # Or trigger via Jamf Pro web interface
+   ```
+
+#### Computer Not Added to Group
+
+**Symptoms:**
+- API returns success but computer not in Smart Group
+- Department field not set correctly
+- Smart Group not found
+
+**Solutions:**
+
+1. **Check Department Field**
+   ```python
+   # Verify department value in employee data
+   print(f"Department: {employee_data.get('department')}")
+   ```
+
+2. **Verify Smart Group Exists**
+   ```python
+   # Check Smart Group exists in Jamf Pro
+   groups = get_smart_groups()
+   for group in groups.get('computer_groups', []):
+       print(f"Group: {group.get('name')}")
+   ```
+
+3. **Check API Permissions**
+   ```bash
+   # Verify API user has permissions to:
+   # - Read computer groups
+   # - Update computer groups
+   # - Add computers to groups
+   ```
+
+#### Policy Execution Errors
+
+**Symptoms:**
+- Policies fail to execute
+- Error messages in Jamf Pro logs
+- Software not installed
+
+**Solutions:**
+
+1. **Check Package Availability**
+   ```bash
+   # Verify packages exist in Jamf Pro
+   # Check package distribution points
+   # Ensure packages are accessible
+   ```
+
+2. **Review Policy Logs**
+   ```bash
+   # Check Jamf Pro policy logs
+   # Look for specific error messages
+   # Verify policy execution history
+   ```
+
+3. **Test Policy Manually**
+   ```bash
+   # Create test policy
+   # Apply to single computer
+   # Monitor execution manually
+   ```
+
+### Debug Commands
+
+#### Check Computer Status
+
+```bash
+# On device, check Jamf Pro status
+sudo jamf recon
+sudo jamf policy
+sudo jamf log
+
+# Check policy execution
+sudo jamf policy -verbose
+```
+
+#### Verify Smart Group Membership
+
+```bash
+# Check if computer is in Smart Group
+# Via Jamf Pro web interface:
+# 1. Go to Computers > Computer Groups
+# 2. Select department Smart Group
+# 3. Verify computer appears in list
+```
+
+#### API Debug Information
+
+```python
+# Enable debug logging
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+# Check API responses
+response = add_computer_to_group(computer_id, group_name)
+print(f"Response: {response}")
+```
+
+---
+
+## Support
+
+### Contact Information
+
+- **Email**: sergei@pharmacyhub.com
+- **Documentation**: [README.md](README.md)
+- **Security**: [SECURITY.md](SECURITY.md)
+
+### Additional Resources
+
+- [Jamf Pro Policy Documentation](https://docs.jamf.com/jamf-pro/documentation/Policy.html)
+- [Smart Groups Guide](https://docs.jamf.com/jamf-pro/documentation/Computer_Groups.html)
+- [Policy Troubleshooting](https://docs.jamf.com/jamf-pro/documentation/Policy_Troubleshooting.html)
+
+---
+
+<div align="center">
+
+**Policy Management Guide - Last updated: January 2024**
+
+</div>

@@ -1,6 +1,6 @@
 # Jamf Pro Bootstrap API
 
-> **Автоматическое создание записей компьютеров в Jamf Pro с применением политик по отделам**
+> **Automatic computer record creation in Jamf Pro with department-based policy application**
 
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://hub.docker.com/)
 [![Python](https://img.shields.io/badge/Python-3.11+-green.svg)](https://python.org)
@@ -9,35 +9,35 @@
 
 ---
 
-## Содержание
+## Table of Contents
 
-- [Обзор](#обзор)
-- [Архитектура](#архитектура)
-- [Безопасность](#безопасность)
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Security](#security)
 - [API Endpoints](#api-endpoints)
-- [Быстрый старт](#быстрый-старт)
-- [Настройка](#настройка)
-- [Структура данных](#структура-данных)
+- [Quick Start](#quick-start)
+- [Setup](#setup)
+- [Data Structure](#data-structure)
 - [Troubleshooting](#troubleshooting)
-- [Поддержка](#поддержка)
+- [Support](#support)
 
 ---
 
-## Обзор
+## Overview
 
-**Jamf Pro Bootstrap API** - это высоконадежное решение для автоматизации управления устройствами в корпоративной среде. Система обеспечивает безопасную интеграцию между CRM системами и Jamf Pro, автоматически применяя политики в зависимости от отдела сотрудника.
+**Jamf Pro Bootstrap API** is a high-reliability solution for automating device management in enterprise environments. The system provides secure integration between CRM systems and Jamf Pro, automatically applying policies based on employee department.
 
-### Ключевые возможности
+### Key Features
 
-- **Многоуровневая безопасность** - шифрование данных и интеграция с HashiCorp Vault
-- **Автоматические политики** - применение настроек по отделам
-- **Полный мониторинг** - логирование всех операций
-- **Простое развертывание** - Docker контейнеры и CI/CD
-- **Отказоустойчивость** - надежная архитектура с резервированием
+- **Multi-level Security** - data encryption and HashiCorp Vault integration
+- **Automatic Policies** - department-based policy application
+- **Full Monitoring** - comprehensive operation logging
+- **Easy Deployment** - Docker containers and CI/CD
+- **High Availability** - reliable architecture with redundancy
 
 ---
 
-## Архитектура
+## Architecture
 
 ```mermaid
 graph LR
@@ -57,84 +57,84 @@ graph LR
     style H fill:#f1f8e9
 ```
 
-### Поток данных
+### Data Flow
 
-1. **CRM** → Отправляет зашифрованный запрос
-2. **API** → Проверяет токен и расшифровывает данные
-3. **Vault** → Предоставляет секреты и ключи
-4. **Jamf Pro** → Создает запись и применяет политики
-5. **Устройства** → Получают настройки при check-in
+1. **CRM** → Sends encrypted request
+2. **API** → Validates token and decrypts data
+3. **Vault** → Provides secrets and keys
+4. **Jamf Pro** → Creates record and applies policies
+5. **Devices** → Receive settings on check-in
 
 ---
 
-## Безопасность
+## Security
 
-> **Важно**: Подробная информация о безопасности находится в файле [SECURITY.md](SECURITY.md)
+> **Important**: Detailed security information is available in [SECURITY.md](SECURITY.md)
 
-### Уровни защиты
+### Protection Levels
 
-- **Аутентификация** - AppRole через HashiCorp Vault
-- **Шифрование** - Fernet с PBKDF2 для данных
-- **Целостность** - SHA256 checksum для проверки
-- **Токены** - Валидация каждого запроса
-- **База данных** - SSL соединение с PostgreSQL
+- **Authentication** - AppRole via HashiCorp Vault
+- **Encryption** - Fernet with PBKDF2 for data
+- **Integrity** - SHA256 checksum for verification
+- **Tokens** - Validation of each request
+- **Database** - SSL connection with PostgreSQL
 
 ---
 
 ## API Endpoints
 
-| Метод | Endpoint | Описание | Аутентификация |
-|-------|----------|----------|----------------|
-| `GET` | `/api/health` | Проверка здоровья API | ❌ |
-| `GET` | `/api/policies` | Информация о политиках | ❌ |
-| `POST` | `/api/request` | Создание запроса от CRM | ✅ Token |
-| `GET` | `/api/request/{id}` | Статус запроса | ✅ API Key |
-| `GET` | `/api/requests/crm/{crm_id}` | Запросы CRM | ✅ API Key |
-| `POST` | `/api/process` | Обработка запросов | ✅ Token |
+| Method | Endpoint | Description | Authentication |
+|--------|----------|-------------|----------------|
+| `GET` | `/api/health` | API health check | ❌ |
+| `GET` | `/api/policies` | Policy information | ❌ |
+| `POST` | `/api/request` | Create CRM request | ✅ Token |
+| `GET` | `/api/request/{id}` | Request status | ✅ API Key |
+| `GET` | `/api/requests/crm/{crm_id}` | CRM requests | ✅ API Key |
+| `POST` | `/api/process` | Process requests | ✅ Token |
 
 ---
 
-## Быстрый старт
+## Quick Start
 
-### Предварительные требования
+### Prerequisites
 
-- Docker и Docker Compose
-- HashiCorp Vault (настроенный)
+- Docker and Docker Compose
+- HashiCorp Vault (configured)
 - Google Cloud SQL PostgreSQL
-- Jamf Pro с API доступом
-- GCP VM для развертывания
+- Jamf Pro with API access
+- GCP VM for deployment
 
-### Быстрая установка
+### Quick Installation
 
 ```bash
-# 1. Клонирование репозитория
+# 1. Clone repository
 git clone https://github.com/your-org/jamf-pro-bootstrap.git
 cd jamf-pro-bootstrap
 
-# 2. Настройка переменных окружения
+# 2. Configure environment variables
 cp .env.example .env
 nano .env
 
-# 3. Запуск через Docker Compose
+# 3. Start with Docker Compose
 docker-compose up -d
 
-# 4. Проверка статуса
+# 4. Check status
 curl http://localhost:5000/api/health
 ```
 
 ---
 
-## Настройка
+## Setup
 
 ### HashiCorp Vault
 
-#### Создание AppRole
+#### Creating AppRole
 
 ```bash
-# Включение AppRole auth method
+# Enable AppRole auth method
 vault auth enable approle
 
-# Создание политики
+# Create policy
 vault policy write jamf-bootstrap-policy -<<EOF
 path "secret/jamf-bootstrap-*" {
   capabilities = ["read"]
@@ -147,17 +147,17 @@ path "secret/database-*" {
 }
 EOF
 
-# Создание AppRole
+# Create AppRole
 vault write auth/approle/role/jamf-bootstrap \
   token_policies="jamf-bootstrap-policy" \
   token_ttl=1h \
   token_max_ttl=4h
 
-# Получение Role ID
+# Get Role ID
 vault read auth/approle/role/jamf-bootstrap/role-id
 ```
 
-#### Секреты для продакшена
+#### Production Secrets
 
 ```json
 // secret/jamf-bootstrap-prod
@@ -192,23 +192,23 @@ vault read auth/approle/role/jamf-bootstrap/role-id
 ### Google Cloud PostgreSQL
 
 ```bash
-# Создание экземпляра PostgreSQL
+# Create PostgreSQL instance
 gcloud sql instances create jamf-bootstrap-db \
   --database-version=POSTGRES_15 \
   --tier=db-f1-micro \
   --region=us-central1 \
   --root-password=your-root-password
 
-# Создание базы данных
+# Create database
 gcloud sql databases create jamf_bootstrap_prod \
   --instance=jamf-bootstrap-db
 
-# Создание пользователя
+# Create user
 gcloud sql users create jamf_user \
   --instance=jamf-bootstrap-db \
   --password=your-password
 
-# Настройка приватного IP
+# Configure private IP
 gcloud sql instances patch jamf-bootstrap-db \
   --require-ssl \
   --authorized-networks=10.0.0.0/8
@@ -218,10 +218,10 @@ gcloud sql instances patch jamf-bootstrap-db \
 
 #### Smart Groups
 
-Создайте следующие Smart Groups в Jamf Pro:
+Create the following Smart Groups in Jamf Pro:
 
-| Группа | Критерии |
-|--------|----------|
+| Group | Criteria |
+|-------|----------|
 | `IT_Computers` | Department = "IT" |
 | `HR_Computers` | Department = "HR" |
 | `FINANCE_Computers` | Department = "Finance" |
@@ -229,18 +229,18 @@ gcloud sql instances patch jamf-bootstrap-db \
 | `SALES_Computers` | Department = "Sales" |
 | `DEFAULT_Computers` | Department != "IT,HR,Finance,Marketing,Sales" |
 
-#### API Пользователь
+#### API User
 
-Создайте API пользователя с правами:
-- Создание/обновление/удаление компьютеров
-- Управление Smart Groups
-- Чтение политик
+Create API user with permissions:
+- Create/update/delete computers
+- Manage Smart Groups
+- Read policies
 
 ---
 
-## Структура данных
+## Data Structure
 
-### Запрос от CRM
+### CRM Request
 
 ```json
 {
@@ -252,7 +252,7 @@ gcloud sql instances patch jamf-bootstrap-db \
 }
 ```
 
-### Данные сотрудника
+### Employee Data
 
 ```json
 {
@@ -269,94 +269,94 @@ gcloud sql instances patch jamf-bootstrap-db \
 }
 ```
 
-### Поддерживаемые отделы
+### Supported Departments
 
-| Отдел | Политики | Описание |
-|-------|----------|----------|
-| **IT** | Административные права, Dev tools, Server access | Разработчики и системные администраторы |
-| **HR** | Базовые приложения, Ограниченные права | Сотрудники HR отдела |
-| **Finance** | Дополнительное шифрование, Аудит | Финансовый отдел |
-| **Marketing** | Креативные приложения, Дизайн-инструменты | Маркетинговый отдел |
-| **Sales** | CRM системы, Мобильные политики | Отдел продаж |
-| **Default** | Базовые политики безопасности | Остальные отделы |
+| Department | Policies | Description |
+|------------|----------|-------------|
+| **IT** | Admin rights, Dev tools, Server access | Developers and system administrators |
+| **HR** | Basic apps, Limited rights | HR department employees |
+| **Finance** | Additional encryption, Audit | Finance department |
+| **Marketing** | Creative apps, Design tools | Marketing department |
+| **Sales** | CRM systems, Mobile policies | Sales department |
+| **Default** | Basic security policies | Other departments |
 
 ---
 
 ## Troubleshooting
 
-### Политики не применяются
+### Policies Not Applied
 
 ```bash
-# 1. Проверьте Smart Groups в Jamf Pro
-# 2. Убедитесь что политики назначены на группы
-# 3. Проверьте права API пользователя
-# 4. Проверьте логи API для ошибок
+# 1. Check Smart Groups in Jamf Pro
+# 2. Ensure policies are assigned to groups
+# 3. Check API user permissions
+# 4. Check API logs for errors
 
 docker logs jamf-bootstrap-api | grep -i "policy"
 ```
 
-### Устройство не получает настройки
+### Device Not Receiving Settings
 
 ```bash
-# 1. Убедитесь что устройство зарегистрировано в Jamf Pro
-# 2. Проверьте что устройство в правильной Smart Group
-# 3. Принудительно запустите check-in
+# 1. Ensure device is registered in Jamf Pro
+# 2. Check device is in correct Smart Group
+# 3. Force check-in
 sudo jamf policy
 
-# 4. Проверьте статус MDM на устройстве
+# 4. Check MDM status on device
 sudo profiles status -type configuration
 ```
 
-### Ошибки шифрования
+### Encryption Errors
 
 ```bash
-# 1. Проверьте ключи в Vault
+# 1. Check keys in Vault
 vault read secret/jamf-bootstrap-prod
 
-# 2. Проверьте логи API
+# 2. Check API logs
 docker logs jamf-bootstrap-api | grep -i "encryption"
 
-# 3. Проверьте токены
+# 3. Check tokens
 curl -H "X-API-Key: your-api-key" http://localhost:5000/api/health
 ```
 
 ---
 
-## Поддержка
+## Support
 
-### Контакты
+### Contacts
 
 - **Email**: sergei@pharmacyhub.com
-- **Документация**: [POLICIES.md](POLICIES.md)
-- **Безопасность**: [SECURITY.md](SECURITY.md)
+- **Documentation**: [POLICIES.md](POLICIES.md)
+- **Security**: [SECURITY.md](SECURITY.md)
 
-### Дополнительные ресурсы
+### Additional Resources
 
 - [Jamf Pro Documentation](https://docs.jamf.com/)
 - [HashiCorp Vault Documentation](https://www.vaultproject.io/docs)
 - [Google Cloud SQL Documentation](https://cloud.google.com/sql/docs)
 
-### Сообщить о проблеме
+### Report Issue
 
-Если вы обнаружили ошибку или у вас есть предложение по улучшению:
+If you found a bug or have a suggestion for improvement:
 
-1. Создайте Issue в GitHub
-2. Опишите проблему подробно
-3. Приложите логи и конфигурацию
-4. Укажите версию системы
+1. Create Issue in GitHub
+2. Describe the problem in detail
+3. Attach logs and configuration
+4. Specify system version
 
 ---
 
-## Лицензия
+## License
 
-Этот проект лицензирован под MIT License - см. файл [LICENSE](LICENSE) для подробностей.
+This project is licensed under MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
 <div align="center">
 
-**Сделано с ❤️ для автоматизации управления устройствами**
+**Made with ❤️ for device management automation**
 
-[⬆️ Наверх](#jamf-pro-bootstrap-api)
+[⬆️ Back to top](#jamf-pro-bootstrap-api)
 
 </div>

@@ -244,7 +244,7 @@ def create_app():
                     
                     # Process request based on type
                     if request_record.request_type == 'create':
-                        result = jamf_processor.create_computer_record(employee_data)
+                        result = jamf_processor.create_computer_with_policies(employee_data)
                     elif request_record.request_type == 'update':
                         # Need jamf_pro_id for updates
                         jamf_pro_id = request_record.jamf_pro_id or employee_data.get('jamf_pro_id')

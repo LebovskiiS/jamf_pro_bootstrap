@@ -53,6 +53,7 @@ def main():
         "employee_id": "E12345",
         "email": "user@example.com",
         "full_name": "User Name",
+        "department": "IT",  # IT, HR, Finance, Marketing, Sales
         "device": {
             "serial": "C02XXXXX",
             "platform": "macOS",

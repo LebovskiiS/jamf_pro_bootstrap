@@ -282,10 +282,10 @@ class JamfProcessor:
     
     def test_connection(self) -> Dict[str, Any]:
         """
-        Тестирование подключения к Jamf Pro
+        Test connection to Jamf Pro
         
         Returns:
-            Результат тестирования
+            Connection test result
         """
         try:
             result = self._make_request('GET', '/computers')
@@ -296,5 +296,225 @@ class JamfProcessor:
         except Exception as e:
             return {
                 'connected': False,
+                'error': str(e)
+            }
+    
+    # === POLICY MANAGEMENT METHODS ===
+    
+    def get_policies(self) -> Optional[Dict]:
+        """
+        Get all policies from Jamf Pro
+        
+        Returns:
+            List of policies or None
+        """
+        try:
+            result = self._make_request('GET', '/policies')
+            return result
+        except Exception as e:
+            logger.error(f"Failed to get policies: {e}")
+            return None
+    
+    def get_policy_by_name(self, policy_name: str) -> Optional[Dict]:
+        """
+        Get policy by name
+        
+        Args:
+            policy_name: Name of the policy
+            
+        Returns:
+            Policy data or None
+        """
+        try:
+            policies = self.get_policies()
+            if policies and 'policies' in policies:
+                for policy in policies['policies']:
+                    if policy.get('name') == policy_name:
+                        return policy
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get policy by name: {e}")
+            return None
+    
+    def get_smart_groups(self) -> Optional[Dict]:
+        """
+        Get all smart computer groups from Jamf Pro
+        
+        Returns:
+            List of smart groups or None
+        """
+        try:
+            result = self._make_request('GET', '/computergroups')
+            return result
+        except Exception as e:
+            logger.error(f"Failed to get smart groups: {e}")
+            return None
+    
+    def add_computer_to_group(self, computer_id: int, group_name: str) -> Optional[Dict]:
+        """
+        Add computer to a smart group
+        
+        Args:
+            computer_id: Computer ID in Jamf Pro
+            group_name: Name of the group
+            
+        Returns:
+            Group assignment result
+        """
+        try:
+            # Find group by name
+            groups = self.get_smart_groups()
+            if not groups or 'computer_groups' not in groups:
+                return {
+                    'success': False,
+                    'error': 'No groups found'
+                }
+            
+            group_id = None
+            for group in groups['computer_groups']:
+                if group.get('name') == group_name:
+                    group_id = group.get('id')
+                    break
+            
+            if not group_id:
+                return {
+                    'success': False,
+                    'error': f'Group "{group_name}" not found'
+                }
+            
+            # Add computer to group
+            group_data = {
+                "computer_additions": [
+                    {"id": computer_id}
+                ]
+            }
+            
+            result = self._make_request('PUT', f'/computergroups/id/{group_id}', group_data)
+            
+            if result:
+                logger.info(f"Added computer {computer_id} to group {group_name}")
+                return {
+                    'success': True,
+                    'group_id': group_id,
+                    'message': f'Computer added to group {group_name}'
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': 'Failed to add computer to group'
+                }
+                
+        except Exception as e:
+            logger.error(f"Failed to add computer to group: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def apply_policies_by_department(self, computer_id: int, department: str) -> Optional[Dict]:
+        """
+        Apply department-specific policies to computer
+        
+        Args:
+            computer_id: Computer ID in Jamf Pro
+            department: Department name (IT, HR, Finance, Marketing, etc.)
+            
+        Returns:
+            Policy application results
+        """
+        try:
+            # Get all policies from Jamf Pro
+            policies = self.get_policies()
+            if not policies or 'policies' not in policies:
+                return {
+                    'success': False,
+                    'error': 'No policies found in Jamf Pro'
+                }
+            
+            applied_policies = []
+            failed_policies = []
+            
+            # Define department-specific policy patterns
+            department_policies = {
+                'it': ['admin', 'management', 'it', 'developer', 'sudo'],
+                'hr': ['hr', 'employee', 'basic', 'standard'],
+                'finance': ['finance', 'accounting', 'secure', 'audit'],
+                'marketing': ['marketing', 'creative', 'design', 'social'],
+                'sales': ['sales', 'crm', 'customer', 'mobile'],
+                'default': ['basic', 'standard', 'default', 'baseline']
+            }
+            
+            # Get policy patterns for department
+            dept_lower = department.lower()
+            patterns = department_policies.get(dept_lower, department_policies['default'])
+            
+            # Apply policies based on department
+            for policy in policies['policies']:
+                policy_name = policy.get('name', '').lower()
+                policy_id = policy.get('id')
+                
+                # Check if policy matches department patterns
+                if any(pattern in policy_name for pattern in patterns):
+                    # Add computer to policy scope (via smart groups)
+                    group_result = self.add_computer_to_group(computer_id, f"{department.upper()}_Computers")
+                    
+                    if group_result and group_result.get('success'):
+                        applied_policies.append(policy_name)
+                        logger.info(f"Applied policy '{policy_name}' to computer {computer_id}")
+                    else:
+                        failed_policies.append(policy_name)
+                        logger.warning(f"Failed to apply policy '{policy_name}' to computer {computer_id}")
+            
+            return {
+                'success': True,
+                'applied_policies': applied_policies,
+                'failed_policies': failed_policies,
+                'department': department,
+                'message': f'Applied {len(applied_policies)} policies for {department} department'
+            }
+                
+        except Exception as e:
+            logger.error(f"Failed to apply department policies: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def create_computer_with_policies(self, employee_data: Dict[str, Any]) -> Optional[Dict]:
+        """
+        Create computer record and apply appropriate policies
+        
+        Args:
+            employee_data: Employee and device data including department
+            
+        Returns:
+            Creation and policy application result
+        """
+        try:
+            # Create computer record first
+            computer_result = self.create_computer_record(employee_data)
+            if not computer_result or not computer_result.get('success'):
+                return computer_result
+            
+            jamf_pro_id = computer_result.get('jamf_pro_id')
+            department = employee_data.get('department', 'IT')
+            
+            # Apply department-specific policies
+            policy_result = self.apply_policies_by_department(jamf_pro_id, department)
+            
+            return {
+                'success': True,
+                'jamf_pro_id': jamf_pro_id,
+                'computer_created': True,
+                'department': department,
+                'policies_applied': policy_result.get('applied_policies', []),
+                'policies_failed': policy_result.get('failed_policies', []),
+                'message': f'Computer created and {len(policy_result.get("applied_policies", []))} policies applied for {department}'
+            }
+                
+        except Exception as e:
+            logger.error(f"Failed to create computer with policies: {e}")
+            return {
+                'success': False,
                 'error': str(e)
             }

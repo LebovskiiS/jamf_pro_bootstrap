@@ -194,6 +194,7 @@ docker logs jamf-bootstrap-api
 ## API Endpoints
 
 - `GET /api/health` - Проверка здоровья API
+- `GET /api/policies` - Информация о политиках по отделам
 - `POST /api/request` - Создание запроса от CRM (требует токен в payload)
 - `GET /api/request/{id}` - Получение статуса запроса
 - `GET /api/requests/crm/{crm_id}` - Запросы CRM

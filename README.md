@@ -189,45 +189,7 @@ vault read auth/approle/role/jamf-bootstrap/role-id
 }
 ```
 
-### Google Cloud PostgreSQL
 
-```bash
-# Create PostgreSQL instance
-gcloud sql instances create jamf-bootstrap-db \
-  --database-version=POSTGRES_15 \
-  --tier=db-f1-micro \
-  --region=us-central1 \
-  --root-password=your-root-password
-
-# Create database
-gcloud sql databases create jamf_bootstrap_prod \
-  --instance=jamf-bootstrap-db
-
-# Create user
-gcloud sql users create jamf_user \
-  --instance=jamf-bootstrap-db \
-  --password=your-password
-
-# Configure private IP
-gcloud sql instances patch jamf-bootstrap-db \
-  --require-ssl \
-  --authorized-networks=10.0.0.0/8
-```
-
-### Jamf Pro
-
-#### Smart Groups
-
-Create the following Smart Groups in Jamf Pro:
-
-| Group | Criteria |
-|-------|----------|
-| `IT_Computers` | Department = "IT" |
-| `HR_Computers` | Department = "HR" |
-| `FINANCE_Computers` | Department = "Finance" |
-| `MARKETING_Computers` | Department = "Marketing" |
-| `SALES_Computers` | Department = "Sales" |
-| `DEFAULT_Computers` | Department != "IT,HR,Finance,Marketing,Sales" |
 
 #### API User
 
@@ -269,56 +231,8 @@ Create API user with permissions:
 }
 ```
 
-### Supported Departments
-
-| Department | Policies | Description |
-|------------|----------|-------------|
-| **IT** | Admin rights, Dev tools, Server access | Developers and system administrators |
-| **HR** | Basic apps, Limited rights | HR department employees |
-| **Finance** | Additional encryption, Audit | Finance department |
-| **Marketing** | Creative apps, Design tools | Marketing department |
-| **Sales** | CRM systems, Mobile policies | Sales department |
-| **Default** | Basic security policies | Other departments |
-
 ---
 
-## Troubleshooting
-
-### Policies Not Applied
-
-```bash
-# 1. Check Smart Groups in Jamf Pro
-# 2. Ensure policies are assigned to groups
-# 3. Check API user permissions
-# 4. Check API logs for errors
-
-docker logs jamf-bootstrap-api | grep -i "policy"
-```
-
-### Device Not Receiving Settings
-
-```bash
-# 1. Ensure device is registered in Jamf Pro
-# 2. Check device is in correct Smart Group
-# 3. Force check-in
-sudo jamf policy
-
-# 4. Check MDM status on device
-sudo profiles status -type configuration
-```
-
-### Encryption Errors
-
-```bash
-# 1. Check keys in Vault
-vault read secret/jamf-bootstrap-prod
-
-# 2. Check API logs
-docker logs jamf-bootstrap-api | grep -i "encryption"
-
-# 3. Check tokens
-curl -H "X-API-Key: your-api-key" http://localhost:5000/api/health
-```
 
 ---
 
@@ -327,7 +241,6 @@ curl -H "X-API-Key: your-api-key" http://localhost:5000/api/health
 ### Contacts
 
 - **Email**: sergei@pharmacyhub.com
-- **Documentation**: [POLICIES.md](POLICIES.md)
 - **Security**: [SECURITY.md](SECURITY.md)
 
 ### Additional Resources

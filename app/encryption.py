@@ -71,9 +71,7 @@ class EncryptionManager:
             Decrypted data
         """
         try:
-            # Декодируем из base64
             encrypted_bytes = base64.urlsafe_b64decode(encrypted_data.encode())
-            # Дешифруем
             decrypted_data = self.fernet.decrypt(encrypted_bytes)
             return decrypted_data.decode()
         except Exception as e:
@@ -179,9 +177,7 @@ class EncryptionManager:
             True if data is valid, False otherwise
         """
         try:
-            # Пытаемся декодировать из base64
             encrypted_bytes = base64.urlsafe_b64decode(encrypted_data.encode())
-            # Проверяем, что это валидные данные Fernet
             return len(encrypted_bytes) > 0
         except Exception:
             return False

@@ -8,7 +8,6 @@ import logging
 from typing import Dict, Any
 from dotenv import load_dotenv
 
-# Load .env file for local development
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -22,19 +21,15 @@ class Config:
     
     def _load_config(self):
         """Load configuration from various sources"""
-        # Priority: Vault > Environment variables > Default values
         
-        # 1. Try to load from Vault
         vault_config = self._load_from_vault()
         if vault_config:
             self.config.update(vault_config)
             logger.info("Configuration loaded from Vault")
         
-        # 2. Load from environment variables
         env_config = self._load_from_env()
         self.config.update(env_config)
         
-        # 3. Set default values
         default_config = self._get_default_config()
         for key, value in default_config.items():
             if key not in self.config or not self.config[key]:
@@ -43,7 +38,6 @@ class Config:
     def _load_from_vault(self) -> Dict[str, str]:
         """Load configuration from Vault"""
         try:
-            # Check if Vault is available
             if not (os.getenv('VAULT_ADDR') and os.getenv('VAULT_TOKEN')):
                 logger.info("Vault not configured, skipping Vault loading")
                 return {}
@@ -51,18 +45,15 @@ class Config:
             from .vault_client import VaultClient
             vault_client = VaultClient()
             
-            # Test connection
             test_result = vault_client.test_connection()
             if not test_result['connected'] or not test_result['authenticated']:
                 logger.warning(f"Failed to connect to Vault: {test_result.get('error')}")
                 return {}
             
-            # Determine environment
             environment = os.getenv('FLASK_ENV', 'dev')
             if environment not in ['dev', 'prod']:
                 environment = 'dev'
             
-            # Get configuration for specific environment
             return vault_client.get_jamf_config(environment)
             
         except Exception as e:

@@ -14,7 +14,6 @@ from app.database import DatabaseManager
 from app.encryption import EncryptionManager
 from app.vault_client import VaultClient
 
-# Configure logging to file for external monitoring
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -29,8 +28,6 @@ def create_app():
     """Initialize and configure Flask application"""
     app = Flask(__name__)
     
-    # Simple logging setup for external monitoring
-    
     # Load config from Vault or environment variables
     app.config['SECRET_KEY'] = config.get('SECRET_KEY')
     app.config['JAMF_PRO_URL'] = config.get('JAMF_PRO_URL')
@@ -43,19 +40,16 @@ def create_app():
     app.config['ENCRYPTION_KEY'] = config.get('ENCRYPTION_KEY')
     app.config['API_SECRET'] = config.get('API_SECRET')
     
-    # Initialize components
     vault_client = VaultClient()
     encryption_manager = EncryptionManager(config.get('ENCRYPTION_KEY', 'default-key'))
     db_manager = DatabaseManager(config.get('DATABASE_URL'))
     
-    # Create tables on startup
     try:
         db_manager.create_tables()
         logger.info("Database initialized")
     except Exception as e:
         logger.error(f"Database initialization failed: {e}")
     
-    # Simple request logging middleware
     @app.before_request
     def before_request():
         logger.info(f"Request: {request.method} {request.path} from {request.remote_addr}")
@@ -65,7 +59,6 @@ def create_app():
         logger.info(f"Response: {response.status_code} for {request.method} {request.path}")
         return response
     
-    # API routes
     @app.route('/api/health')
     def health_check():
         """Health check endpoint"""
@@ -92,12 +85,10 @@ def create_app():
     def create_request():
         """Create new encrypted request from CRM"""
         try:
-            # Get request data
             data = request.get_json()
             if not data:
                 return jsonify({'error': 'No data provided'}), 400
             
-            # Required fields including token
             required_fields = ['crm_id', 'request_type', 'payload', 'encrypted_key', 'token']
             for field in required_fields:
                 if field not in data:
@@ -107,17 +98,13 @@ def create_app():
             if not vault_client.validate_payload_token(data, config.get('FLASK_ENV')):
                 return jsonify({'error': 'Invalid token in payload'}), 401
             
-            # Generate unique request ID
             request_id = str(uuid.uuid4())
             
-            # Validate encrypted key format
             if not encryption_manager.validate_encrypted_data(data['encrypted_key']):
                 return jsonify({'error': 'Invalid encrypted key format'}), 400
             
-            # Generate checksum for integrity verification
             checksum = encryption_manager.generate_checksum(data['payload'])
             
-            # Save request to database
             request_record = db_manager.create_request(
                 request_id=request_id,
                 crm_id=data['crm_id'],
@@ -146,12 +133,10 @@ def create_app():
     def get_request_status(request_id):
         """Get request status by ID"""
         try:
-            # Check API key
             api_key = request.headers.get('X-API-Key')
             if not api_key or not vault_client.validate_api_key(api_key, config.get('FLASK_ENV')):
                 return jsonify({'error': 'Invalid API key'}), 401
             
-            # Get request from database
             request_record = db_manager.get_request(request_id)
             if not request_record:
                 return jsonify({'error': 'Request not found'}), 404
@@ -176,12 +161,10 @@ def create_app():
     def get_crm_requests(crm_id):
         """Get all requests for specific CRM"""
         try:
-            # Check API key
             api_key = request.headers.get('X-API-Key')
             if not api_key or not vault_client.validate_api_key(api_key, config.get('FLASK_ENV')):
                 return jsonify({'error': 'Invalid API key'}), 401
             
-            # Get requests from database
             requests = db_manager.get_requests_by_crm(crm_id)
             
             return jsonify({
@@ -206,16 +189,13 @@ def create_app():
     def process_pending_requests():
         """Process pending requests (internal endpoint)"""
         try:
-            # Get request data
             data = request.get_json()
             if not data:
                 return jsonify({'error': 'No data provided'}), 400
             
-            # Validate token in payload
             if not vault_client.validate_payload_token(data, config.get('FLASK_ENV')):
                 return jsonify({'error': 'Invalid token in payload'}), 401
             
-            # Initialize Jamf processor
             from app.jamf_processor import JamfProcessor
             jamf_processor = JamfProcessor(
                 jamf_url=app.config['JAMF_PRO_URL'],
@@ -224,16 +204,13 @@ def create_app():
                 api_key=app.config['JAMF_PRO_API_KEY']
             )
             
-            # Get pending requests
             pending_requests = db_manager.get_pending_requests()
             
             processed_count = 0
             for request_record in pending_requests:
                 try:
-                    # Update status to processing
                     db_manager.update_request_status(request_record.request_id, 'processing')
                     
-                    # Decrypt data with integrity check
                     decrypted_payload = encryption_manager.decrypt_and_verify(
                         request_record.payload, 
                         request_record.checksum
@@ -242,11 +219,9 @@ def create_app():
                         raise ValueError("Data integrity check failed")
                     employee_data = json.loads(decrypted_payload)
                     
-                    # Process request based on type
                     if request_record.request_type == 'create':
                         result = jamf_processor.create_computer_with_policies(employee_data)
                     elif request_record.request_type == 'update':
-                        # Need jamf_pro_id for updates
                         jamf_pro_id = request_record.jamf_pro_id or employee_data.get('jamf_pro_id')
                         if not jamf_pro_id:
                             raise ValueError("jamf_pro_id required for update")
@@ -259,7 +234,6 @@ def create_app():
                     else:
                         raise ValueError(f"Unsupported request type: {request_record.request_type}")
                     
-                    # Update status based on result
                     if result and result.get('success'):
                         db_manager.update_request_status(
                             request_record.request_id, 

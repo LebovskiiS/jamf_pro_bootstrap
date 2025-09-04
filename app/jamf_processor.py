@@ -1,6 +1,6 @@
 """
 Jamf Pro Processor
-Модуль для обработки запросов к Jamf Pro
+Module for processing Jamf Pro requests
 """
 
 import json
@@ -30,7 +30,6 @@ class JamfProcessor:
         self.api_key = api_key
         self.session = requests.Session()
         
-        # Configure session
         self.session.headers.update({
             'Content-Type': 'application/json',
             'Accept': 'application/json'
@@ -65,7 +64,6 @@ class JamfProcessor:
         try:
             url = f"{self.jamf_url}/api/v1{endpoint}"
             
-            # If no API key, get token
             if not self.api_key:
                 token = self._get_auth_token()
                 if token:
@@ -101,7 +99,6 @@ class JamfProcessor:
             Record creation result
         """
         try:
-            # Extract data
             employee_id = employee_data.get('employee_id')
             email = employee_data.get('email')
             full_name = employee_data.get('full_name')
@@ -110,7 +107,6 @@ class JamfProcessor:
             if not all([employee_id, email, full_name, device]):
                 raise ValueError("Incomplete employee data")
             
-            # Build data for Jamf Pro
             computer_data = {
                 "general": {
                     "name": f"{full_name} - {employee_id}",
@@ -147,7 +143,6 @@ class JamfProcessor:
                 ]
             }
             
-            # Create record
             result = self._make_request('POST', '/computers', computer_data)
             
             if result:
@@ -182,7 +177,6 @@ class JamfProcessor:
             Record update result
         """
         try:
-            # Get current record
             current_record = self._make_request('GET', f'/computers/id/{jamf_pro_id}')
             if not current_record:
                 return {
@@ -190,7 +184,6 @@ class JamfProcessor:
                     'error': 'Computer record not found'
                 }
             
-            # Обновляем данные
             employee_id = employee_data.get('employee_id')
             email = employee_data.get('email')
             full_name = employee_data.get('full_name')
@@ -208,11 +201,10 @@ class JamfProcessor:
                 }
             }
             
-            # Обновляем запись
             result = self._make_request('PUT', f'/computers/id/{jamf_pro_id}', update_data)
             
             if result:
-                logger.info(f"Обновлена запись компьютера {jamf_pro_id} для сотрудника {employee_id}")
+                logger.info(f"Updated computer record {jamf_pro_id} for employee {employee_id}")
                 return {
                     'success': True,
                     'jamf_pro_id': jamf_pro_id,
@@ -244,8 +236,8 @@ class JamfProcessor:
         try:
             result = self._make_request('DELETE', f'/computers/id/{jamf_pro_id}')
             
-            if result is not None:  # DELETE может возвращать None при успехе
-                logger.info(f"Удалена запись компьютера {jamf_pro_id}")
+            if result is not None:
+                logger.info(f"Deleted computer record {jamf_pro_id}")
                 return {
                     'success': True,
                     'message': 'Computer record deleted successfully'
@@ -299,7 +291,6 @@ class JamfProcessor:
                 'error': str(e)
             }
     
-    # === POLICY MANAGEMENT METHODS ===
     
     def get_policies(self) -> Optional[Dict]:
         """
@@ -362,7 +353,6 @@ class JamfProcessor:
             Group assignment result
         """
         try:
-            # Find group by name
             groups = self.get_smart_groups()
             if not groups or 'computer_groups' not in groups:
                 return {
@@ -382,7 +372,6 @@ class JamfProcessor:
                     'error': f'Group "{group_name}" not found'
                 }
             
-            # Add computer to group
             group_data = {
                 "computer_additions": [
                     {"id": computer_id}
@@ -423,7 +412,6 @@ class JamfProcessor:
             Policy application results
         """
         try:
-            # Get all policies from Jamf Pro
             policies = self.get_policies()
             if not policies or 'policies' not in policies:
                 return {
@@ -434,7 +422,6 @@ class JamfProcessor:
             applied_policies = []
             failed_policies = []
             
-            # Define department-specific policy patterns
             department_policies = {
                 'it': ['admin', 'management', 'it', 'developer', 'sudo'],
                 'hr': ['hr', 'employee', 'basic', 'standard'],
@@ -444,18 +431,14 @@ class JamfProcessor:
                 'default': ['basic', 'standard', 'default', 'baseline']
             }
             
-            # Get policy patterns for department
             dept_lower = department.lower()
             patterns = department_policies.get(dept_lower, department_policies['default'])
             
-            # Apply policies based on department
             for policy in policies['policies']:
                 policy_name = policy.get('name', '').lower()
                 policy_id = policy.get('id')
                 
-                # Check if policy matches department patterns
                 if any(pattern in policy_name for pattern in patterns):
-                    # Add computer to policy scope (via smart groups)
                     group_result = self.add_computer_to_group(computer_id, f"{department.upper()}_Computers")
                     
                     if group_result and group_result.get('success'):
@@ -491,7 +474,6 @@ class JamfProcessor:
             Creation and policy application result
         """
         try:
-            # Create computer record first
             computer_result = self.create_computer_record(employee_data)
             if not computer_result or not computer_result.get('success'):
                 return computer_result
@@ -499,7 +481,6 @@ class JamfProcessor:
             jamf_pro_id = computer_result.get('jamf_pro_id')
             department = employee_data.get('department', 'IT')
             
-            # Apply department-specific policies
             policy_result = self.apply_policies_by_department(jamf_pro_id, department)
             
             return {

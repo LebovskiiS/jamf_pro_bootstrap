@@ -26,7 +26,6 @@ def get_vault_secrets():
     Returns:
         dict: Encryption key and API token
     """
-    # This is a placeholder - replace with actual Vault integration
     return {
         'encryption_key': os.getenv('JAMF_ENCRYPTION_KEY', 'your-32-char-encryption-key-here'),
         'api_token': os.getenv('JAMF_API_TOKEN', 'your-api-token-here'),
@@ -45,10 +44,8 @@ def encrypt_employee_data(employee_data, encryption_key):
     Returns:
         tuple: (encrypted_data, encrypted_key, checksum)
     """
-    # Convert data to JSON string
     json_data = json.dumps(employee_data, sort_keys=True)
     
-    # Generate key using PBKDF2
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
@@ -57,14 +54,11 @@ def encrypt_employee_data(employee_data, encryption_key):
     )
     key = base64.urlsafe_b64encode(kdf.derive(encryption_key.encode()))
     
-    # Encrypt data
     fernet = Fernet(key)
     encrypted_data = fernet.encrypt(json_data.encode())
     
-    # Generate checksum
     checksum = hashlib.sha256(json_data.encode()).hexdigest()
     
-    # Encrypt the key with Vault key
     vault_fernet = Fernet(encryption_key.encode())
     encrypted_key = vault_fernet.encrypt(key)
     
@@ -108,18 +102,15 @@ def send_jamf_request(employee_data, crm_id, request_type='create'):
     Returns:
         dict: API response
     """
-    # Get secrets from Vault
     secrets = get_vault_secrets()
     encryption_key = secrets['encryption_key']
     api_token = secrets['api_token']
     api_url = secrets['api_url']
     
-    # Encrypt employee data
     encrypted_data, encrypted_key_b64, checksum = encrypt_employee_data(
         employee_data, encryption_key
     )
     
-    # Prepare request payload
     request_payload = {
         'crm_id': crm_id,
         'request_type': request_type,
@@ -134,7 +125,6 @@ def send_jamf_request(employee_data, crm_id, request_type='create'):
     print(f"CRM ID: {crm_id}")
     print(f"Department: {employee_data.get('department')}")
     
-    # Send request to API
     try:
         response = requests.post(
             f'{api_url}/api/request',
@@ -258,13 +248,11 @@ def main():
     print("🚀 Jamf Pro Bootstrap API - CRM Integration Example")
     print("=" * 60)
     
-    # Test API health first
     print("\n1. Testing API health...")
     if not test_api_health():
         print("❌ API is not available. Exiting.")
         return
     
-    # Get policy information
     print("\n2. Getting policy information...")
     policies_info = get_policies_info()
     if policies_info:
@@ -272,14 +260,12 @@ def main():
         for dept, info in policies_info.get('departments', {}).items():
             print(f"  {dept}: {info.get('smart_group')}")
     
-    # Create employee data
     print("\n3. Creating employee data...")
     employee_data = create_employee_data()
     print(f"Employee: {employee_data['full_name']} ({employee_data['email']})")
     print(f"Department: {employee_data['department']}")
     print(f"Device: {employee_data['device']['serial']}")
     
-    # Send request to create computer record
     print("\n4. Sending request to create computer record...")
     result = send_jamf_request(employee_data, 'crm-example-001', 'create')
     
@@ -287,7 +273,6 @@ def main():
         request_id = result.get('request_id')
         print(f"✅ Request created with ID: {request_id}")
         
-        # Check request status
         print("\n5. Checking request status...")
         status_result = check_request_status(request_id)
         
@@ -307,8 +292,6 @@ def main():
 
 
 if __name__ == "__main__":
-    # Set environment variables for testing
-    # In production, these would be retrieved from Vault
     os.environ.setdefault('JAMF_ENCRYPTION_KEY', 'your-32-char-encryption-key-here')
     os.environ.setdefault('JAMF_API_TOKEN', 'your-api-token-here')
     os.environ.setdefault('JAMF_API_URL', 'https://your-api-server.com')

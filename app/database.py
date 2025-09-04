@@ -20,34 +20,26 @@ class JamfRequest(Base):
     """Model for storing Jamf Pro requests"""
     __tablename__ = 'jamf_requests'
     
-    # Primary fields
     id = Column(Integer, primary_key=True)
     request_id = Column(String(255), unique=True, nullable=False)
     crm_id = Column(String(255), nullable=False)
     jamf_pro_id = Column(String(255), nullable=True)
     
-    # Status and request type
-    status = Column(String(50), default='pending')  # pending, processing, completed, failed
-    request_type = Column(String(100), nullable=False)  # create, update, delete
+    status = Column(String(50), default='pending')
+    request_type = Column(String(100), nullable=False)
     
-    # Encrypted data (always in base64)
-    payload = Column(Text, nullable=False)  # Encrypted employee data
-    encrypted_key = Column(String(500), nullable=False)  # Encrypted key for decryption
+    payload = Column(Text, nullable=False)
+    encrypted_key = Column(String(500), nullable=False)
     
-    # Metadata
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     processed_at = Column(DateTime, nullable=True)
     
-    # Error handling
     error_message = Column(Text, nullable=True)
     retry_count = Column(Integer, default=0)
     
-    # Security
-    encryption_version = Column(String(10), default='v1')  # Encryption version
-    checksum = Column(String(64), nullable=True)  # SHA256 hash for integrity check
-    
-    # Performance indexes
+    encryption_version = Column(String(10), default='v1')
+    checksum = Column(String(64), nullable=True)
     __table_args__ = (
         Index('idx_crm_id', 'crm_id'),
         Index('idx_status', 'status'),
@@ -118,8 +110,8 @@ class DatabaseManager:
                 request_id=request_id,
                 crm_id=crm_id,
                 request_type=request_type,
-                payload=payload,  # Уже зашифрованные данные
-                encrypted_key=encrypted_key,  # Зашифрованный ключ
+                payload=payload,
+                encrypted_key=encrypted_key,
                 checksum=checksum,
                 encryption_version='v1'
             )
@@ -203,7 +195,7 @@ class DatabaseManager:
             session.close()
     
     def cleanup_old_requests(self, days: int = 30) -> int:
-        """Очистка старых запросов"""
+        """Cleanup old requests"""
         session = self.get_session()
         try:
             cutoff_date = datetime.utcnow() - timedelta(days=days)
@@ -212,7 +204,7 @@ class DatabaseManager:
                 .filter(JamfRequest.status.in_(['completed', 'failed']))\
                 .delete()
             session.commit()
-            logger.info(f"Удалено {deleted} старых запросов")
+            logger.info(f"Deleted {deleted} old requests")
             return deleted
         except SQLAlchemyError as e:
             session.rollback()

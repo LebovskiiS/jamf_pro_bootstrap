@@ -149,7 +149,6 @@ class VaultClient:
         """
         config = {}
         
-        # Get Jamf Pro config for specific environment
         jamf_secret = self.get_secret(f'secret/jamf-pro-{environment}')
         if jamf_secret:
             config.update({
@@ -161,7 +160,6 @@ class VaultClient:
                 'JAMF_PRO_API_KEY': jamf_secret.get('api_key', '')
             })
         
-        # Get app settings for environment
         app_secret = self.get_secret(f'secret/jamf-bootstrap-{environment}')
         if app_secret:
             config.update({
@@ -173,10 +171,8 @@ class VaultClient:
                 'API_SECRET': app_secret.get('api_secret', '')
             })
         
-        # Get PostgreSQL database settings
         db_secret = self.get_secret(f'secret/database-{environment}')
         if db_secret:
-            # Use internal IP for PostgreSQL connection
             db_host = os.getenv('POSTGRES_INTERNAL_IP', '10.79.160.3')
             
             config.update({
@@ -191,7 +187,6 @@ class VaultClient:
                 'DATABASE_SSL_KEY': db_secret.get('ssl_key', '')
             })
             
-            # Формируем полный URL подключения к PostgreSQL
             if all([db_secret.get('user'), db_secret.get('password'), db_secret.get('name')]):
                 ssl_params = ""
                 if db_secret.get('ssl_mode'):
@@ -249,7 +244,6 @@ class VaultClient:
             True if token is valid, False otherwise
         """
         try:
-            # Check if token exists in payload
             if 'token' not in payload:
                 logger.warning("Token missing in payload")
                 return False
@@ -259,13 +253,11 @@ class VaultClient:
                 logger.warning("Token is empty in payload")
                 return False
             
-            # Get valid token from Vault
             stored_token = self.get_secret(f'secret/jamf-bootstrap-{environment}', 'api_secret')
             if not stored_token:
                 logger.error("Token not found in Vault")
                 return False
             
-            # Compare tokens
             is_valid = stored_token == token
             if not is_valid:
                 logger.warning(f"Invalid token in payload: {token[:10]}...")
@@ -288,12 +280,10 @@ class VaultClient:
         Returns:
             Secret from Vault or None if token is invalid
         """
-        # First validate token in payload
         if not self.validate_payload_token(payload, environment):
             logger.error("Token in payload is invalid, secret not provided")
             return None
         
-        # If token is valid, get secret
         logger.info(f"Token is valid, getting secret: {secret_path}")
         return self.get_secret(secret_path)
     
@@ -312,11 +302,9 @@ class VaultClient:
         }
         
         try:
-            # Проверяем подключение
             self.client.sys.read_health_status()
             result['connected'] = True
             
-            # Проверяем аутентификацию
             result['authenticated'] = self.is_authenticated()
             
         except Exception as e:
